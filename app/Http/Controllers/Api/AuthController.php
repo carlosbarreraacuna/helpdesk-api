@@ -12,11 +12,19 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $credentials = $request->validate([
-            'email' => 'required|email',
+            'login' => 'required|string', // Puede ser email o username
             'password' => 'required',
         ]);
 
-        if (!Auth::attempt($credentials)) {
+        // Determinar si es email o username
+        $loginField = filter_var($credentials['login'], FILTER_VALIDATE_EMAIL) ? 'email' : 'username';
+        
+        $authCredentials = [
+            $loginField => $credentials['login'],
+            'password' => $credentials['password'],
+        ];
+
+        if (!Auth::attempt($authCredentials)) {
             return response()->json(['message' => 'Credenciales inválidas'], 401);
         }
 

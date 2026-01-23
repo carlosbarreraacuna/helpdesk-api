@@ -42,7 +42,8 @@ class UserController extends Controller
             $searchTerm = '%' . $search . '%';
             $query->where(function($q) use ($searchTerm) {
                 $q->where('name', 'like', $searchTerm)
-                  ->orWhere('email', 'like', $searchTerm);
+                  ->orWhere('email', 'like', $searchTerm)
+                  ->orWhere('username', 'like', $searchTerm);
             });
         }
 
@@ -77,6 +78,7 @@ class UserController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'username' => 'required|string|max:255|unique:users,username',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:8|confirmed',
             'role_id' => 'required|exists:roles,id',

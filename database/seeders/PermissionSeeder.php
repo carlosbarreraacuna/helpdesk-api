@@ -47,6 +47,9 @@ class PermissionSeeder extends Seeder
             // TICKETS - PRIORIDAD
             ['module' => 'tickets', 'name' => 'tickets.change_priority', 'display_name' => 'Cambiar Prioridad', 'action_type' => 'update'],
             
+            // TICKETS - VISTA DE USUARIO
+            ['module' => 'tickets', 'name' => 'tickets.view_own', 'display_name' => 'Ver Sus Propios Tickets', 'action_type' => 'read'],
+            
             // TICKETS - COMENTARIOS
             ['module' => 'tickets', 'name' => 'tickets.add_comment', 'display_name' => 'Agregar Comentarios', 'action_type' => 'create'],
             ['module' => 'tickets', 'name' => 'tickets.view_internal_comments', 'display_name' => 'Ver Comentarios Internos', 'action_type' => 'read'],

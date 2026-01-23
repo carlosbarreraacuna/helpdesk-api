@@ -31,7 +31,10 @@ class TicketController extends Controller
         $query = Ticket::with(['status', 'assignedAgent', 'createdBy']);
 
         // Filter according to role
-        if ($user->role->name === 'agente') {
+        if ($user->role->name === 'usuario') {
+            // User only sees their own tickets
+            $query->where('requester_email', $user->email);
+        } elseif ($user->role->name === 'agente') {
             // Agent only sees their assigned tickets
             $query->where('assigned_to', $user->id);
         } elseif ($user->role->name === 'supervisor') {
@@ -99,8 +102,14 @@ class TicketController extends Controller
 
     public function show($id)
     {
+        $user = request()->user();
         $ticket = Ticket::with(['status', 'assignedAgent', 'createdBy', 'comments.user', 'history.user'])
             ->findOrFail($id);
+        
+        // Check permissions for role 'usuario'
+        if ($user->role->name === 'usuario' && $ticket->requester_email !== $user->email) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
         
         return response()->json($ticket);
     }
@@ -213,16 +222,40 @@ class TicketController extends Controller
             'is_internal' => 'boolean',
         ]);
 
+        $user = $request->user();
         $ticket = Ticket::findOrFail($id);
+
+        // Check permissions for role 'usuario'
+        if ($user->role->name === 'usuario' && $ticket->requester_email !== $user->email) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
 
         $comment = TicketComment::create([
             'ticket_id' => $ticket->id,
-            'user_id' => $request->user()->id,
+            'user_id' => $user->id,
             'comment' => $validated['comment'],
             'is_internal' => $validated['is_internal'] ?? false,
         ]);
 
         return response()->json(['message' => 'Comentario agregado', 'comment' => $comment]);
+    }
+
+    public function getComments($id)
+    {
+        $user = request()->user();
+        $ticket = Ticket::findOrFail($id);
+        
+        // Check permissions for role 'usuario'
+        if ($user->role->name === 'usuario' && $ticket->requester_email !== $user->email) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+        
+        $comments = TicketComment::with('user')
+            ->where('ticket_id', $ticket->id)
+            ->orderBy('created_at', 'asc')
+            ->get();
+
+        return response()->json($comments);
     }
 
     public function searchPublic(Request $request)

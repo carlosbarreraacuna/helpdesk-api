@@ -69,7 +69,7 @@ class MenuItemSeeder extends Seeder
                 'key' => 'admin.roles',
                 'label' => 'Roles y Permisos',
                 'icon' => 'Shield',
-                'route' => '/admin/roles',
+                'route' => '/admin/roles-permissions',
                 'parent_id' => $adminParent->id,
                 'order' => 2,
                 'is_system' => true,

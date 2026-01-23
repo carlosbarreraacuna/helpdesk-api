@@ -52,6 +52,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/tickets/{id}/escalate', [TicketController::class, 'escalate']);
     Route::patch('/tickets/{id}/status', [TicketController::class, 'updateStatus']);
     Route::post('/tickets/{id}/comments', [TicketController::class, 'addComment']);
+    Route::get('/tickets/{id}/comments', [TicketController::class, 'getComments']);
     Route::post('/tickets/{id}/close', [TicketController::class, 'close']);
     
     // User Management Routes

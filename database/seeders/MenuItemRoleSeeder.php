@@ -14,6 +14,7 @@ class MenuItemRoleSeeder extends Seeder
         $adminRole = Role::where('name', 'admin')->first();
         $supervisorRole = Role::where('name', 'supervisor')->first();
         $agenteRole = Role::where('name', 'agente')->first();
+        $usuarioRole = Role::where('name', 'usuario')->first();
 
         $allMenuItems = MenuItem::all();
 
@@ -39,6 +40,21 @@ class MenuItemRoleSeeder extends Seeder
             DB::table('menu_item_role')->insert([
                 'menu_item_id' => $item->id,
                 'role_id' => $supervisorRole->id,
+                'is_visible' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        // USUARIO - Solo ve Tickets
+        $usuarioItems = MenuItem::whereIn('key', [
+            'tickets',
+        ])->get();
+
+        foreach ($usuarioItems as $item) {
+            DB::table('menu_item_role')->insert([
+                'menu_item_id' => $item->id,
+                'role_id' => $usuarioRole->id,
                 'is_visible' => true,
                 'created_at' => now(),
                 'updated_at' => now(),

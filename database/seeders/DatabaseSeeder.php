@@ -16,12 +16,14 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
+            AreaSeeder::class,
             RoleSeeder::class,
             TicketStatusSeeder::class,
             SlaConfigSeeder::class,
             ModuleSeeder::class,
             PermissionSeeder::class,
             DefaultRolePermissionSeeder::class,
+            UserRoleSeeder::class,
             MenuItemSeeder::class,
             MenuItemRoleSeeder::class,
             ReportTemplateSeeder::class,

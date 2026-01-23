@@ -39,7 +39,7 @@ class ModuleSeeder extends Seeder
                 'display_name' => 'Gestión de Roles',
                 'description' => 'Administración de roles y permisos',
                 'icon' => 'shield',
-                'route' => '/admin/roles',
+                'route' => '/admin/roles-permissions',
                 'order_index' => 4
             ],
             [
