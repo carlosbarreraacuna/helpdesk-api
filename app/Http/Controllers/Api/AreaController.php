@@ -9,11 +9,27 @@ use Illuminate\Http\Request;
 class AreaController extends Controller
 {
     /**
-     * Lista todas las áreas
+     * Lista todas las áreas con paginación y búsqueda
      */
-    public function index()
+    public function index(Request $request)
     {
-        $areas = Area::orderBy('name')->get();
+        $query = Area::query();
+
+        // Búsqueda
+        $search = $request->get('search');
+        if ($search && $search !== '') {
+            $searchTerm = '%' . $search . '%';
+            $query->where(function($q) use ($searchTerm) {
+                // Case-insensitive search
+                $q->whereRaw('LOWER(name) LIKE LOWER(?)', [$searchTerm])
+                  ->orWhereRaw('LOWER(description) LIKE LOWER(?)', [$searchTerm]);
+            });
+        }
+
+        // Paginación
+        $perPage = $request->get('per_page', 10);
+        $areas = $query->orderBy('name')->paginate($perPage);
+
         return response()->json($areas);
     }
 

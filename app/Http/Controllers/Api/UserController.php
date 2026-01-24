@@ -41,9 +41,10 @@ class UserController extends Controller
         if ($search && $search !== '') {
             $searchTerm = '%' . $search . '%';
             $query->where(function($q) use ($searchTerm) {
-                $q->where('name', 'like', $searchTerm)
-                  ->orWhere('email', 'like', $searchTerm)
-                  ->orWhere('username', 'like', $searchTerm);
+                // Case-insensitive search
+                $q->whereRaw('LOWER(name) LIKE LOWER(?)', [$searchTerm])
+                  ->orWhereRaw('LOWER(email) LIKE LOWER(?)', [$searchTerm])
+                  ->orWhereRaw('LOWER(username) LIKE LOWER(?)', [$searchTerm]);
             });
         }
 
