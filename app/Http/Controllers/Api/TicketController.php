@@ -37,15 +37,48 @@ class TicketController extends Controller
         } elseif ($user->role->name === 'agente') {
             // Agent only sees their assigned tickets
             $query->where('assigned_to', $user->id);
-        } elseif ($user->role->name === 'supervisor') {
-            // Supervisor sees tickets from their area
-            $query->whereHas('assignedAgent', function($q) use ($user) {
-                $q->where('area_id', $user->area_id);
-            })->orWhereNull('assigned_to'); // Includes unassigned
         }
-        // Admin sees all (no filter)
+        // Admin and Supervisor see all tickets (no filter)
 
-        return response()->json($query->paginate(20));
+        // Apply search filter
+        if ($request->has('search') && !empty($request->search)) {
+            $searchTerm = '%' . $request->search . '%';
+            \Log::info('Búsqueda aplicada:', ['search' => $request->search]);
+            $query->where(function($q) use ($searchTerm) {
+                // Case-insensitive search como en UserController
+                $q->whereRaw('LOWER(ticket_number) LIKE LOWER(?)', [$searchTerm])
+                  ->orWhereRaw('LOWER(requester_name) LIKE LOWER(?)', [$searchTerm])
+                  ->orWhereRaw('LOWER(requester_email) LIKE LOWER(?)', [$searchTerm])
+                  ->orWhereRaw('LOWER(description) LIKE LOWER(?)', [$searchTerm]);
+            });
+        }
+
+        // Apply status filter
+        if ($request->has('status_id') && !empty($request->status_id)) {
+            \Log::info('Filtro de estado aplicado:', ['status_id' => $request->status_id]);
+            $query->where('status_id', $request->status_id);
+        }
+
+        // Apply priority filter
+        if ($request->has('priority') && !empty($request->priority)) {
+            \Log::info('Filtro de prioridad aplicado:', ['priority' => $request->priority]);
+            $query->where('priority', $request->priority);
+        }
+
+        // Apply area filter (if requester_area matches area_id)
+        if ($request->has('area_id') && !empty($request->area_id)) {
+            \Log::info('Filtro de área aplicado:', ['area_id' => $request->area_id]);
+            $query->where('requester_area', 'like', '%' . $request->area_id . '%');
+        }
+
+        // Get per_page parameter with default of 10
+        $perPage = $request->get('per_page', 10);
+        \Log::info('Parámetros de paginación:', ['per_page' => $perPage]);
+        
+        $results = $query->paginate($perPage);
+        \Log::info('Resultados de la consulta:', ['total' => $results->total(), 'per_page' => $results->perPage()]);
+        
+        return response()->json($results);
     }
 
     public function store(Request $request)
