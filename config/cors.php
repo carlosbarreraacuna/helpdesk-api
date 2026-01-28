@@ -19,7 +19,11 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [env('FRONTEND_URL', 'http://localhost:3000'), 'http://localhost:3000'],
+    'allowed_origins' => [
+    env('FRONTEND_URL', 'http://localhost:3000'), 
+    'http://localhost:3000',
+    'https://helpdesk-frontend-xi.vercel.app'
+],
 
     'allowed_origins_patterns' => [],
 
