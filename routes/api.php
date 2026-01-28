@@ -25,6 +25,10 @@ use App\Http\Controllers\Api\ReportTemplateController;
 |
 */
 
+Route::options('{any}', function () {
+    return response()->json([], 204);
+})->where('any', '.*');
+
 // Public routes (Portal)
 Route::post('/portal/tickets', [TicketController::class, 'store']);
 Route::post('/portal/tickets/search', [TicketController::class, 'searchPublic']);
