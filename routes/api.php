@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\AreaController;
 use App\Http\Controllers\Api\MenuItemController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ReportTemplateController;
+use App\Http\Controllers\Api\WhatsAppWebhookController;
 
 /*
 |--------------------------------------------------------------------------
@@ -179,4 +180,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/audit/permissions', [AuditController::class, 'permissionLogs']);
     Route::get('/audit/permissions/users/{userId}', [AuditController::class, 'userPermissionLogs']);
     Route::get('/audit/permissions/roles/{roleId}', [AuditController::class, 'rolePermissionLogs']);
+});
+
+// WhatsApp Webhook Routes (públicas)
+Route::get('/whatsapp/webhook', [WhatsAppWebhookController::class, 'verify']);
+Route::post('/whatsapp/webhook', [WhatsAppWebhookController::class, 'webhook']);
+
+// Enviar mensaje manual desde el sistema (requiere autenticación)
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/whatsapp/send', [WhatsAppWebhookController::class, 'sendManualMessage']);
 });

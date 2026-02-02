@@ -81,11 +81,17 @@ class UserController extends Controller
             'name' => 'required|string|max:255',
             'username' => 'required|string|max:255|unique:users,username',
             'email' => 'required|email|unique:users,email',
+            'cedula' => 'required|string|max:20|unique:users,cedula',
             'password' => 'required|string|min:8|confirmed',
             'role_id' => 'required|exists:roles,id',
             'area_id' => 'nullable|exists:areas,id',
             'phone' => 'nullable|string|max:20',
+            'whatsapp_phone' => 'nullable|string|max:20',
             'is_active' => 'boolean',
+        ], [
+            'cedula.required' => 'La cédula es obligatoria',
+            'cedula.unique' => 'La cédula ya está registrada',
+            'cedula.max' => 'La cédula no puede tener más de 20 caracteres',
         ]);
 
         $validated['password'] = Hash::make($validated['password']);
@@ -114,10 +120,22 @@ class UserController extends Controller
                 'email',
                 Rule::unique('users')->ignore($user->id)
             ],
+            'cedula' => [
+                'sometimes',
+                'required',
+                'string',
+                'max:20',
+                Rule::unique('users')->ignore($user->id)
+            ],
             'role_id' => 'sometimes|required|exists:roles,id',
             'area_id' => 'nullable|exists:areas,id',
             'phone' => 'nullable|string|max:20',
+            'whatsapp_phone' => 'nullable|string|max:20',
             'is_active' => 'boolean',
+        ], [
+            'cedula.required' => 'La cédula es obligatoria',
+            'cedula.unique' => 'La cédula ya está registrada',
+            'cedula.max' => 'La cédula no puede tener más de 20 caracteres',
         ]);
 
         // Si se cambia la contraseña

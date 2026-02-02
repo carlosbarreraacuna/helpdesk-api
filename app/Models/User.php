@@ -26,6 +26,8 @@ class User extends Authenticatable
         'role_id',
         'area_id',
         'phone',
+        'whatsapp_phone',
+        'cedula',
         'avatar',
         'is_active',
         'last_login',
@@ -83,6 +85,36 @@ class User extends Authenticatable
     public function ticketHistory()
     {
         return $this->hasMany(TicketHistory::class);
+    }
+
+    /**
+     * Get the validation rules that apply to the model.
+     */
+    public static function rules($id = null)
+    {
+        return [
+            'name' => 'required|string|max:255',
+            'username' => 'required|string|max:255|unique:users,username,' . $id,
+            'email' => 'required|string|email|max:255|unique:users,email,' . $id,
+            'cedula' => 'required|string|max:20|unique:users,cedula,' . $id,
+            'phone' => 'nullable|string|max:20',
+            'whatsapp_phone' => 'nullable|string|max:20',
+            'role_id' => 'required|exists:roles,id',
+            'area_id' => 'nullable|exists:areas,id',
+            'password' => 'required|string|min:8',
+        ];
+    }
+
+    /**
+     * Get the custom validation messages.
+     */
+    public static function validationMessages()
+    {
+        return [
+            'cedula.required' => 'La cédula es obligatoria',
+            'cedula.unique' => 'La cédula ya está registrada',
+            'cedula.max' => 'La cédula no puede tener más de 20 caracteres',
+        ];
     }
 
     public function permissions()
