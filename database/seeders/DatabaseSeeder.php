@@ -29,6 +29,8 @@ class DatabaseSeeder extends Seeder
             ReportTemplateSeeder::class,
             ReportTemplateRoleSeeder::class,
             AdminUserSeeder::class,
+            KbModuleSeeder::class,
+            KbMenuItemSeeder::class,
         ]);
     }
 }

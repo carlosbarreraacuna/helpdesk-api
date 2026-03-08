@@ -14,6 +14,9 @@ use App\Http\Controllers\Api\MenuItemController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ReportTemplateController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
+use App\Http\Controllers\Api\Kb\KbCategoryController;
+use App\Http\Controllers\Api\Kb\KbTagController;
+use App\Http\Controllers\Api\Kb\KbArticleController;
 
 /*
 |--------------------------------------------------------------------------
@@ -33,6 +36,12 @@ Route::options('{any}', function () {
 // Public routes (Portal)
 Route::post('/portal/tickets', [TicketController::class, 'store']);
 Route::post('/portal/tickets/search', [TicketController::class, 'searchPublic']);
+
+// Public KB routes (no auth required)
+Route::get('/portal/kb/categories', [KbCategoryController::class, 'index']);
+Route::get('/portal/kb/articles', [KbArticleController::class, 'index']);
+Route::get('/portal/kb/articles/{id}', [KbArticleController::class, 'show']);
+Route::get('/portal/kb/suggest', [KbArticleController::class, 'suggest']);
 
 // Authentication routes
 Route::post('/auth/login', [AuthController::class, 'login']);
@@ -180,6 +189,61 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/audit/permissions', [AuditController::class, 'permissionLogs']);
     Route::get('/audit/permissions/users/{userId}', [AuditController::class, 'userPermissionLogs']);
     Route::get('/audit/permissions/roles/{roleId}', [AuditController::class, 'rolePermissionLogs']);
+
+    // ─── BASE DE CONOCIMIENTO ───────────────────────────────────────────────
+
+    // Suggest (used in ticket form, public-like but needs auth)
+    Route::get('/kb/suggest', [KbArticleController::class, 'suggest']);
+
+    // Categories & Subcategories
+    Route::get('/kb/categories', [KbCategoryController::class, 'index']);
+    Route::get('/kb/categories/all', [KbCategoryController::class, 'indexAll']);
+    Route::get('/kb/categories/{id}/subcategories', [KbCategoryController::class, 'subcategories']);
+
+    Route::middleware('permission:kb.manage')->group(function () {
+        Route::post('/kb/categories', [KbCategoryController::class, 'store']);
+        Route::patch('/kb/categories/{id}', [KbCategoryController::class, 'update']);
+        Route::delete('/kb/categories/{id}', [KbCategoryController::class, 'destroy']);
+        Route::post('/kb/categories/{id}/subcategories', [KbCategoryController::class, 'storeSubcategory']);
+        Route::patch('/kb/subcategories/{id}', [KbCategoryController::class, 'updateSubcategory']);
+        Route::delete('/kb/subcategories/{id}', [KbCategoryController::class, 'destroySubcategory']);
+    });
+
+    // Tags
+    Route::get('/kb/tags', [KbTagController::class, 'index']);
+    Route::post('/kb/tags', [KbTagController::class, 'store'])->middleware('permission:kb.create');
+    Route::delete('/kb/tags/{id}', [KbTagController::class, 'destroy'])->middleware('permission:kb.manage');
+
+    // Articles – public read
+    Route::get('/kb/articles', [KbArticleController::class, 'index']);
+    Route::get('/kb/articles/{id}', [KbArticleController::class, 'show']);
+    Route::post('/kb/articles/{id}/vote', [KbArticleController::class, 'vote']);
+    Route::get('/kb/articles/{id}/vote', [KbArticleController::class, 'userVote']);
+
+    // Articles – create (agentes+)
+    Route::post('/kb/articles', [KbArticleController::class, 'store'])
+        ->middleware('permission:kb.create');
+
+    // Articles – versions & edit (supervisores+)
+    Route::middleware('permission:kb.edit')->group(function () {
+        Route::post('/kb/articles/{id}/versions', [KbArticleController::class, 'storeVersion']);
+        Route::get('/kb/articles/{id}/versions', [KbArticleController::class, 'versions']);
+        Route::get('/kb/articles/{articleId}/versions/{versionId}', [KbArticleController::class, 'showVersion']);
+    });
+
+    // Articles – publish/archive (admin)
+    Route::middleware('permission:kb.publish')->group(function () {
+        Route::post('/kb/articles/{articleId}/versions/{versionId}/publish', [KbArticleController::class, 'publishVersion']);
+        Route::patch('/kb/articles/{id}/status', [KbArticleController::class, 'updateStatus']);
+        Route::delete('/kb/articles/{id}', [KbArticleController::class, 'destroy']);
+    });
+
+    // Ticket <-> KB Article integration
+    Route::get('/tickets/{ticketId}/kb-articles', [KbArticleController::class, 'ticketArticles']);
+    Route::post('/tickets/{ticketId}/kb-articles', [KbArticleController::class, 'linkToTicket'])
+        ->middleware('permission:kb.link');
+    Route::delete('/tickets/{ticketId}/kb-articles/{articleId}', [KbArticleController::class, 'unlinkFromTicket'])
+        ->middleware('permission:kb.link');
 });
 
 // WhatsApp Webhook Routes (públicas)
