@@ -31,6 +31,9 @@ class DatabaseSeeder extends Seeder
             AdminUserSeeder::class,
             KbModuleSeeder::class,
             KbMenuItemSeeder::class,
+            AssetModuleSeeder::class,
+            AssetTypeSeeder::class,
+            AssetMenuSeeder::class,
         ]);
     }
 }

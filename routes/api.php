@@ -17,6 +17,15 @@ use App\Http\Controllers\Api\WhatsAppWebhookController;
 use App\Http\Controllers\Api\Kb\KbCategoryController;
 use App\Http\Controllers\Api\Kb\KbTagController;
 use App\Http\Controllers\Api\Kb\KbArticleController;
+use App\Http\Controllers\Api\Assets\AssetTypeController;
+use App\Http\Controllers\Api\Assets\LocationController;
+use App\Http\Controllers\Api\Assets\ServiceProviderController;
+use App\Http\Controllers\Api\Assets\AssetController;
+use App\Http\Controllers\Api\Assets\AssetAssignmentController;
+use App\Http\Controllers\Api\Assets\AssetMaintenanceController;
+use App\Http\Controllers\Api\Assets\UserTechProfileController;
+use App\Http\Controllers\Api\Widget\WidgetController;
+use App\Http\Controllers\Api\Widget\ChatController;
 
 /*
 |--------------------------------------------------------------------------
@@ -43,6 +52,9 @@ Route::get('/portal/kb/articles', [KbArticleController::class, 'index']);
 Route::get('/portal/kb/articles/{id}', [KbArticleController::class, 'show']);
 Route::get('/portal/kb/suggest', [KbArticleController::class, 'suggest']);
 
+// Widget KB search — público (usuarios no autenticados pueden buscar)
+Route::get('/widget/kb/search', [WidgetController::class, 'kbSearch']);
+
 // Authentication routes
 Route::post('/auth/login', [AuthController::class, 'login']);
 
@@ -51,7 +63,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
-    
+
+    // Broadcasting auth para canales privados (Reverb/Pusher protocol)
+    Route::post('/broadcasting/auth', \App\Http\Controllers\Api\BroadcastingAuthController::class);
+
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
     
@@ -244,6 +259,108 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('permission:kb.link');
     Route::delete('/tickets/{ticketId}/kb-articles/{articleId}', [KbArticleController::class, 'unlinkFromTicket'])
         ->middleware('permission:kb.link');
+
+    // =====================
+    // MÓDULO INVENTARIO
+    // =====================
+
+    // Tipos de activos
+    Route::get('/assets/types', [AssetTypeController::class, 'index']);
+    Route::middleware('permission:assets.manage')->group(function () {
+        Route::post('/assets/types', [AssetTypeController::class, 'store']);
+        Route::patch('/assets/types/{assetType}', [AssetTypeController::class, 'update']);
+        Route::delete('/assets/types/{assetType}', [AssetTypeController::class, 'destroy']);
+        Route::get('/assets/types/{assetType}/fields', [AssetTypeController::class, 'indexFields']);
+        Route::post('/assets/types/{assetType}/fields', [AssetTypeController::class, 'storeField']);
+        Route::patch('/assets/types/{assetType}/fields/{field}', [AssetTypeController::class, 'updateField']);
+        Route::delete('/assets/types/{assetType}/fields/{field}', [AssetTypeController::class, 'destroyField']);
+    });
+
+    // Ubicaciones
+    Route::get('/locations', [LocationController::class, 'index']);
+    Route::get('/areas/{area}/locations', [LocationController::class, 'indexByArea']);
+    Route::middleware('permission:assets.manage')->group(function () {
+        Route::post('/areas/{area}/locations', [LocationController::class, 'store']);
+        Route::patch('/locations/{location}', [LocationController::class, 'update']);
+        Route::delete('/locations/{location}', [LocationController::class, 'destroy']);
+    });
+
+    // Proveedores de servicio
+    Route::get('/service-providers', [ServiceProviderController::class, 'index']);
+    Route::middleware('permission:assets.manage')->group(function () {
+        Route::post('/service-providers', [ServiceProviderController::class, 'store']);
+        Route::patch('/service-providers/{serviceProvider}', [ServiceProviderController::class, 'update']);
+        Route::delete('/service-providers/{serviceProvider}', [ServiceProviderController::class, 'destroy']);
+    });
+
+    // Activos
+    Route::middleware('permission:assets.view')->group(function () {
+        Route::get('/assets', [AssetController::class, 'index']);
+        Route::get('/assets/{asset}', [AssetController::class, 'show']);
+        Route::get('/assets/{asset}/events', [AssetController::class, 'events']);
+        Route::get('/assets/{asset}/assignments', [AssetController::class, 'assignments']);
+        Route::get('/assets/{asset}/maintenances', [AssetController::class, 'maintenances']);
+    });
+    Route::middleware('permission:assets.create')->group(function () {
+        Route::post('/assets', [AssetController::class, 'store']);
+    });
+    Route::middleware('permission:assets.update')->group(function () {
+        Route::patch('/assets/{asset}', [AssetController::class, 'update']);
+        Route::patch('/assets/{asset}/status', [AssetController::class, 'updateStatus']);
+        Route::patch('/assets/{asset}/location', [AssetController::class, 'updateLocation']);
+    });
+    Route::middleware('permission:assets.manage')->group(function () {
+        Route::delete('/assets/{asset}', [AssetController::class, 'destroy']);
+    });
+
+    // Asignaciones
+    Route::middleware('permission:assets.assign')->group(function () {
+        Route::post('/assets/{asset}/assign', [AssetAssignmentController::class, 'assign']);
+        Route::post('/assets/{asset}/return', [AssetAssignmentController::class, 'return']);
+    });
+    Route::get('/users/{userId}/assets', [AssetAssignmentController::class, 'userAssets']);
+
+    // Mantenimientos
+    Route::middleware('permission:assets.view')->group(function () {
+        Route::get('/maintenances', [AssetMaintenanceController::class, 'index']);
+        Route::get('/maintenances/{maintenance}', [AssetMaintenanceController::class, 'show']);
+    });
+    Route::middleware('permission:assets.maintain')->group(function () {
+        Route::post('/maintenances', [AssetMaintenanceController::class, 'store']);
+        Route::patch('/maintenances/{maintenance}', [AssetMaintenanceController::class, 'update']);
+        Route::patch('/maintenances/{maintenance}/status', [AssetMaintenanceController::class, 'updateStatus']);
+    });
+
+    // ── Widget de Soporte ──────────────────────────────────────────────────────
+    Route::prefix('widget')->group(function () {
+        // KB search público para el widget (también funciona sin auth, manejado aparte)
+        Route::get('/kb/search', [WidgetController::class, 'kbSearch']);
+        // Con autenticación:
+        Route::get('/session', [WidgetController::class, 'session']);
+        Route::post('/session', [WidgetController::class, 'session']);
+        Route::get('/recent-tickets', [WidgetController::class, 'recentTickets']);
+        Route::get('/tickets/{ticketId}/messages', [WidgetController::class, 'ticketMessages']);
+        Route::post('/articles/{articleId}/feedback', [WidgetController::class, 'articleFeedback']);
+        // Chat
+        Route::get('/sessions/{session}/messages', [ChatController::class, 'messages']);
+        Route::post('/sessions/{session}/messages', [ChatController::class, 'sendMessage']);
+        Route::post('/sessions/{session}/read', [ChatController::class, 'markRead']);
+        Route::post('/sessions/{session}/close', [ChatController::class, 'close']);
+        Route::post('/sessions/{session}/assign', [ChatController::class, 'assign']);
+        // Panel agente
+        Route::get('/active-sessions', [ChatController::class, 'activeSessions']);
+        Route::get('/unread-count', [ChatController::class, 'unreadCount']);
+    });
+
+    // Hoja de vida del usuario
+    Route::get('/users/{userId}/profile/tech', [UserTechProfileController::class, 'profile']);
+    Route::get('/users/{userId}/profile/assets', [UserTechProfileController::class, 'currentAssets']);
+    Route::get('/users/{userId}/profile/assets/history', [UserTechProfileController::class, 'assetHistory']);
+    Route::get('/users/{userId}/profile/software', [UserTechProfileController::class, 'software']);
+    Route::middleware('permission:assets.assign')->group(function () {
+        Route::post('/users/{userId}/profile/software', [UserTechProfileController::class, 'storeSoftware']);
+        Route::delete('/users/{userId}/profile/software/{software}', [UserTechProfileController::class, 'destroySoftware']);
+    });
 });
 
 // WhatsApp Webhook Routes (públicas)

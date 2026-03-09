@@ -10,6 +10,9 @@ use App\Models\TicketComment;
 use App\Models\TicketStatus;
 use App\Models\SlaConfig;
 use App\Models\User;
+use App\Models\WidgetChatSession;
+use App\Models\WidgetChatMessage;
+use App\Events\WidgetMessageSent;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -269,6 +272,37 @@ class TicketController extends Controller
             'comment' => $validated['comment'],
             'is_internal' => $validated['is_internal'] ?? false,
         ]);
+
+        // Si el ticket tiene sesión de widget activa y el comentario es público,
+        // crear un WidgetChatMessage para que el chat del usuario lo reciba en tiempo real.
+        if (!($validated['is_internal'] ?? false)) {
+            $session = WidgetChatSession::where('ticket_id', $ticket->id)
+                ->whereIn('status', ['active', 'pending'])
+                ->first();
+
+            if ($session) {
+                \Log::info('Broadcasting agent reply to widget session', [
+                    'session_id' => $session->id,
+                    'ticket_id'  => $ticket->id,
+                    'agent_id'   => $user->id,
+                ]);
+                $widgetMsg = WidgetChatMessage::create([
+                    'session_id'      => $session->id,
+                    'sender_id'       => $user->id,
+                    'sender_type'     => 'agent',
+                    'body'            => $validated['comment'],
+                    'attachment_path' => null,
+                    'attachment_name' => null,
+                    'is_read'         => false,
+                ]);
+                $widgetMsg->load('sender:id,name');
+                \Log::info('WidgetChatMessage created, broadcasting...', ['msg_id' => $widgetMsg->id]);
+                broadcast(new WidgetMessageSent($widgetMsg));
+                \Log::info('Broadcast dispatched successfully');
+            } else {
+                \Log::info('No active widget session found for ticket', ['ticket_id' => $ticket->id]);
+            }
+        }
 
         return response()->json(['message' => 'Comentario agregado', 'comment' => $comment]);
     }
