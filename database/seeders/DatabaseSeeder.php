@@ -34,6 +34,7 @@ class DatabaseSeeder extends Seeder
             AssetModuleSeeder::class,
             AssetTypeSeeder::class,
             AssetMenuSeeder::class,
+            EmailChannelSeeder::class,
         ]);
     }
 }

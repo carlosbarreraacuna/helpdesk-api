@@ -37,6 +37,6 @@ class AssetMaintenance extends Model
 
     public function tickets(): BelongsToMany
     {
-        return $this->belongsToMany(Ticket::class, 'asset_maintenance_tickets');
+        return $this->belongsToMany(Ticket::class, 'asset_maintenance_tickets', 'maintenance_id', 'ticket_id');
     }
 }

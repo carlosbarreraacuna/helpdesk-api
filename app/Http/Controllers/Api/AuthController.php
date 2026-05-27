@@ -51,6 +51,13 @@ class AuthController extends Controller
 
     public function me(Request $request)
     {
-        return response()->json($request->user()->load('role', 'area'));
+        $user = $request->user()->load('role', 'area');
+
+        // getAllPermissions() ya solo incluye permisos con is_granted=true
+        $effectivePermissions = $user->getAllPermissions()->pluck('name')->values();
+
+        return response()->json(array_merge($user->toArray(), [
+            'effective_permissions' => $effectivePermissions,
+        ]));
     }
 }

@@ -15,7 +15,7 @@ class AssetController extends Controller
 
     public function index(Request $request)
     {
-        $query = Asset::with(['assetType', 'location', 'currentUser'])
+        $query = Asset::with(['assetType', 'area', 'currentUser'])
             ->withCount('assignments');
 
         if ($request->filled('type_id')) {
@@ -24,8 +24,8 @@ class AssetController extends Controller
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
-        if ($request->filled('location_id')) {
-            $query->where('location_id', $request->location_id);
+        if ($request->filled('area_id')) {
+            $query->where('area_id', $request->area_id);
         }
         if ($request->filled('user_id')) {
             $query->where('current_user_id', $request->user_id);
@@ -46,7 +46,7 @@ class AssetController extends Controller
     public function show(Asset $asset)
     {
         return response()->json(
-            $asset->load(['assetType.fields', 'location.area', 'currentUser', 'fieldValues.field', 'activeAssignment.user'])
+            $asset->load(['assetType.fields', 'area', 'currentUser', 'fieldValues.field', 'activeAssignment.user'])
         );
     }
 
@@ -58,7 +58,7 @@ class AssetController extends Controller
             'internal_code'     => 'nullable|string|max:80|unique:assets',
             'serial_number'     => 'nullable|string|max:100|unique:assets',
             'inventory_tag'     => 'nullable|string|max:80|unique:assets',
-            'location_id'       => 'nullable|exists:locations,id',
+            'area_id'           => 'nullable|exists:areas,id',
             'vendor'            => 'nullable|string|max:150',
             'purchase_date'     => 'nullable|date',
             'warranty_end_date' => 'nullable|date',
@@ -86,7 +86,7 @@ class AssetController extends Controller
 
         $this->eventService->record($asset, 'created', 'Activo registrado en el sistema.', $request->user()->id);
 
-        return response()->json($asset->load(['assetType', 'location', 'fieldValues.field']), 201);
+        return response()->json($asset->load(['assetType', 'area', 'fieldValues.field']), 201);
     }
 
     public function update(Request $request, Asset $asset)
@@ -96,7 +96,7 @@ class AssetController extends Controller
             'internal_code'     => 'nullable|string|max:80|unique:assets,internal_code,' . $asset->id,
             'serial_number'     => 'nullable|string|max:100|unique:assets,serial_number,' . $asset->id,
             'inventory_tag'     => 'nullable|string|max:80|unique:assets,inventory_tag,' . $asset->id,
-            'location_id'       => 'nullable|exists:locations,id',
+            'area_id'           => 'nullable|exists:areas,id',
             'vendor'            => 'nullable|string|max:150',
             'purchase_date'     => 'nullable|date',
             'warranty_end_date' => 'nullable|date',
@@ -124,7 +124,7 @@ class AssetController extends Controller
 
         $this->eventService->record($asset, 'updated', 'Datos del activo actualizados.', $request->user()->id);
 
-        return response()->json($asset->fresh(['assetType', 'location', 'fieldValues.field']));
+        return response()->json($asset->fresh(['assetType', 'area', 'fieldValues.field']));
     }
 
     public function updateStatus(Request $request, Asset $asset)
@@ -147,30 +147,30 @@ class AssetController extends Controller
     public function updateLocation(Request $request, Asset $asset)
     {
         $data = $request->validate([
-            'location_id' => 'required|exists:locations,id',
-            'reason'      => 'nullable|string',
+            'area_id' => 'required|exists:areas,id',
+            'reason'  => 'nullable|string',
         ]);
 
-        $fromLocationId = $asset->location_id;
-        $asset->update(['location_id' => $data['location_id']]);
+        $fromAreaId = $asset->area_id;
+        $asset->update(['area_id' => $data['area_id']]);
 
         AssetLocationLog::create([
-            'asset_id'         => $asset->id,
-            'from_location_id' => $fromLocationId,
-            'to_location_id'   => $data['location_id'],
-            'changed_by'       => $request->user()->id,
-            'reason'           => $data['reason'] ?? null,
-            'changed_at'       => now(),
+            'asset_id'    => $asset->id,
+            'from_area_id' => $fromAreaId,
+            'to_area_id'   => $data['area_id'],
+            'changed_by'  => $request->user()->id,
+            'reason'      => $data['reason'] ?? null,
+            'changed_at'  => now(),
         ]);
 
         $this->eventService->record(
             $asset, 'location_change',
-            "Ubicación del activo actualizada.",
+            "Área del activo actualizada.",
             $request->user()->id,
-            ['from_location_id' => $fromLocationId, 'to_location_id' => $data['location_id']]
+            ['from_area_id' => $fromAreaId, 'to_area_id' => $data['area_id']]
         );
 
-        return response()->json($asset->fresh(['location.area']));
+        return response()->json($asset->fresh(['area']));
     }
 
     public function events(Asset $asset)

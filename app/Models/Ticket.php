@@ -24,9 +24,13 @@ class Ticket extends Model
         'sla_due_date',
         'resolved_at',
         'closed_at',
+        'channel',
+        'channel_ref',
+        'is_read',
     ];
 
     protected $casts = [
+        'is_read' => 'boolean',
         'sla_due_date' => 'datetime',
         'resolved_at' => 'datetime',
         'closed_at' => 'datetime',
@@ -65,5 +69,17 @@ class Ticket extends Model
     public function internalComments()
     {
         return $this->hasMany(TicketComment::class)->where('is_internal', true);
+    }
+
+    public function participants()
+    {
+        return $this->belongsToMany(User::class, 'ticket_participants', 'ticket_id', 'user_id')
+                    ->withPivot('added_by')
+                    ->withTimestamps();
+    }
+
+    public function participantRecords()
+    {
+        return $this->hasMany(TicketParticipant::class);
     }
 }

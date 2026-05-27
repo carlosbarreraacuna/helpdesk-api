@@ -29,11 +29,12 @@ class MenuItemRoleSeeder extends Seeder
             ]);
         }
 
-        // SUPERVISOR - Ve tickets, reportes, sin configuración avanzada
+        // SUPERVISOR - Ve tickets, reportes, reuniones
         $supervisorItems = MenuItem::whereIn('key', [
             'dashboard',
             'tickets',
             'reports',
+            'meetings',
         ])->get();
 
         foreach ($supervisorItems as $item) {
@@ -61,10 +62,11 @@ class MenuItemRoleSeeder extends Seeder
             ]);
         }
 
-        // AGENTE - Solo dashboard y tickets
+        // AGENTE - Dashboard, tickets y reuniones
         $agenteItems = MenuItem::whereIn('key', [
             'dashboard',
             'tickets',
+            'meetings',
         ])->get();
 
         foreach ($agenteItems as $item) {

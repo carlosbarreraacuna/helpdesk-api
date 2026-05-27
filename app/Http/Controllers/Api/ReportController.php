@@ -103,19 +103,32 @@ class ReportController extends Controller
 
     public function avgResolutionTime(Request $request)
     {
-        $query = $this->applyUserFilters(Ticket::query(), $request->user());
-        
-        $avgMinutes = $query->whereNotNull('resolved_at')
-            ->selectRaw('AVG(TIMESTAMPDIFF(MINUTE, created_at, resolved_at)) as avg_time')
-            ->value('avg_time');
+        try {
+            $query = $this->applyUserFilters(Ticket::query(), $request->user());
 
-        $hours = $avgMinutes ? round($avgMinutes / 60, 1) : 0;
+            $avgMinutes = $query->whereNotNull('resolved_at')
+                ->selectRaw('AVG(EXTRACT(EPOCH FROM (resolved_at - created_at)) / 60) as avg_time')
+                ->value('avg_time');
 
-        return response()->json([
-            'value' => $hours,
-            'label' => 'Tiempo Promedio (horas)',
-            'format' => 'hours',
-        ]);
+            $hours = $avgMinutes ? round($avgMinutes / 60, 1) : 0;
+
+            return response()->json([
+                'value' => $hours,
+                'label' => 'Tiempo Promedio (horas)',
+                'format' => 'hours',
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('avgResolutionTime error', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to load metric',
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 
     // ==========================================

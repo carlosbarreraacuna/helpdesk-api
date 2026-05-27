@@ -52,9 +52,19 @@ class MenuItemSeeder extends Seeder
             MenuItem::create($item);
         }
 
+        // Reuniones
+        MenuItem::create([
+            'key'    => 'meetings',
+            'label'  => 'Reuniones',
+            'icon'   => 'Video',
+            'route'  => '/meetings',
+            'order'  => 12,
+            'is_system' => false,
+        ]);
+
         // Sub-items de Administración
         $adminParent = MenuItem::where('key', 'admin')->first();
-        
+
         $subItems = [
             [
                 'key' => 'admin.users',
@@ -90,6 +100,24 @@ class MenuItemSeeder extends Seeder
                 'route' => '/admin/menu',
                 'parent_id' => $adminParent->id,
                 'order' => 4,
+                'is_system' => false,
+            ],
+            [
+                'key' => 'admin.email-channels',
+                'label' => 'Canales de Email',
+                'icon' => 'Mail',
+                'route' => '/admin/email-channels',
+                'parent_id' => $adminParent->id,
+                'order' => 5,
+                'is_system' => false,
+            ],
+            [
+                'key' => 'admin.integrations',
+                'label' => 'Integraciones',
+                'icon' => 'Plug',
+                'route' => '/settings/integrations',
+                'parent_id' => $adminParent->id,
+                'order' => 6,
                 'is_system' => false,
             ],
         ];

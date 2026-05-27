@@ -10,7 +10,7 @@ class AssetLocationLog extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'asset_id', 'from_location_id', 'to_location_id',
+        'asset_id', 'from_area_id', 'to_area_id',
         'changed_by', 'reason', 'changed_at',
     ];
 
@@ -21,14 +21,14 @@ class AssetLocationLog extends Model
         return $this->belongsTo(Asset::class);
     }
 
-    public function fromLocation(): BelongsTo
+    public function fromArea(): BelongsTo
     {
-        return $this->belongsTo(Location::class, 'from_location_id');
+        return $this->belongsTo(Area::class, 'from_area_id');
     }
 
-    public function toLocation(): BelongsTo
+    public function toArea(): BelongsTo
     {
-        return $this->belongsTo(Location::class, 'to_location_id');
+        return $this->belongsTo(Area::class, 'to_area_id');
     }
 
     public function changedBy(): BelongsTo

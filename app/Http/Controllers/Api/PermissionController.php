@@ -30,13 +30,47 @@ class PermissionController extends Controller
             'description' => 'nullable',
             'action_type' => 'required|in:create,read,update,delete,special',
         ]);
-        
+
         $permission = Permission::create($validated);
-        
+
         return response()->json([
             'message' => 'Permiso creado exitosamente',
             'permission' => $permission
         ], 201);
+    }
+
+    // Actualizar permiso existente
+    public function update(Request $request, $id)
+    {
+        $permission = Permission::findOrFail($id);
+
+        $validated = $request->validate([
+            'display_name' => 'sometimes|required',
+            'description'  => 'nullable',
+            'action_type'  => 'sometimes|in:create,read,update,delete,special',
+        ]);
+
+        $permission->update($validated);
+
+        return response()->json([
+            'message' => 'Permiso actualizado exitosamente',
+            'permission' => $permission
+        ]);
+    }
+
+    // Eliminar permiso
+    public function destroy($id)
+    {
+        $permission = Permission::findOrFail($id);
+
+        // Desasociar de roles y usuarios antes de eliminar
+        \DB::table('role_permission')->where('permission_id', $id)->delete();
+        \DB::table('user_permission')->where('permission_id', $id)->delete();
+        \DB::table('permission_change_log')->where('permission_id', $id)->delete();
+
+        $permission->delete();
+
+        return response()->json(['message' => 'Permiso eliminado exitosamente']);
     }
     
     // Obtener permisos de un rol específico

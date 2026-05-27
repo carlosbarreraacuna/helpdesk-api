@@ -5,12 +5,13 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\Area;
 
 class Asset extends Model
 {
     protected $fillable = [
         'asset_type_id', 'name', 'internal_code', 'serial_number', 'inventory_tag',
-        'status', 'location_id', 'current_user_id', 'vendor', 'purchase_date',
+        'status', 'area_id', 'current_user_id', 'vendor', 'purchase_date',
         'warranty_end_date', 'warranty_provider', 'notes', 'is_shared', 'created_by',
     ];
 
@@ -25,9 +26,9 @@ class Asset extends Model
         return $this->belongsTo(AssetType::class);
     }
 
-    public function location(): BelongsTo
+    public function area(): BelongsTo
     {
-        return $this->belongsTo(Location::class);
+        return $this->belongsTo(Area::class);
     }
 
     public function currentUser(): BelongsTo
@@ -55,7 +56,7 @@ class Asset extends Model
         return $this->hasOne(AssetAssignment::class)->where('is_active', true)->latestOfMany();
     }
 
-    public function locationLogs(): HasMany
+    public function areaLogs(): HasMany
     {
         return $this->hasMany(AssetLocationLog::class);
     }

@@ -7,12 +7,15 @@ use Illuminate\Http\Request;
 use App\Models\Ticket;
 use App\Models\TicketHistory;
 use App\Models\TicketComment;
+use App\Models\TicketParticipant;
 use App\Models\TicketStatus;
 use App\Models\SlaConfig;
 use App\Models\User;
 use App\Models\WidgetChatSession;
 use App\Models\WidgetChatMessage;
 use App\Events\WidgetMessageSent;
+use App\Services\EmailChannelService;
+use App\Services\WhatsAppService;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -35,8 +38,12 @@ class TicketController extends Controller
 
         // Filter according to role
         if ($user->role->name === 'usuario') {
-            // User only sees their own tickets
-            $query->where('requester_email', $user->email);
+            // User sees their own tickets OR tickets where they are a participant
+            $participantTicketIds = TicketParticipant::where('user_id', $user->id)->pluck('ticket_id');
+            $query->where(function ($q) use ($user, $participantTicketIds) {
+                $q->where('requester_email', $user->email)
+                  ->orWhereIn('id', $participantTicketIds);
+            });
         } elseif ($user->role->name === 'agente') {
             // Agent only sees their assigned tickets
             $query->where('assigned_to', $user->id);
@@ -78,9 +85,9 @@ class TicketController extends Controller
         $perPage = $request->get('per_page', 10);
         \Log::info('Parámetros de paginación:', ['per_page' => $perPage]);
         
-        $results = $query->paginate($perPage);
+        $results = $query->orderByDesc('created_at')->paginate($perPage);
         \Log::info('Resultados de la consulta:', ['total' => $results->total(), 'per_page' => $results->perPage()]);
-        
+
         return response()->json($results);
     }
 
@@ -129,6 +136,8 @@ class TicketController extends Controller
             'new_value' => 'Ticket creado desde portal público',
         ]);
 
+        broadcast(new \App\Events\TicketCreated($ticket));
+
         return response()->json([
             'message' => 'Ticket creado exitosamente',
             'ticket_number' => $ticketNumber,
@@ -139,14 +148,40 @@ class TicketController extends Controller
     public function show($id)
     {
         $user = request()->user();
-        $ticket = Ticket::with(['status', 'assignedAgent', 'createdBy', 'comments.user', 'history.user'])
+        $ticket = Ticket::with(['status', 'assignedAgent', 'createdBy', 'comments.user', 'comments.attachments', 'history.user'])
             ->findOrFail($id);
-        
+
         // Check permissions for role 'usuario'
-        if ($user->role->name === 'usuario' && $ticket->requester_email !== $user->email) {
-            return response()->json(['message' => 'No autorizado'], 403);
+        if ($user->role->name === 'usuario') {
+            $isRequester  = $ticket->requester_email === $user->email;
+            $isParticipant = TicketParticipant::where('ticket_id', $ticket->id)->where('user_id', $user->id)->exists();
+            if (!$isRequester && !$isParticipant) {
+                return response()->json(['message' => 'No autorizado'], 403);
+            }
         }
-        
+
+        // Mark as read when an agent/admin opens it
+        if (in_array($user->role->name, ['agente', 'supervisor', 'admin']) && !$ticket->is_read) {
+            $ticket->update(['is_read' => true]);
+        }
+
+        return response()->json($ticket);
+    }
+
+    public function peek($id)
+    {
+        $user   = request()->user();
+        $ticket = Ticket::with(['status', 'assignedAgent', 'createdBy'])
+            ->findOrFail($id);
+
+        if ($user->role->name === 'usuario') {
+            $isRequester  = $ticket->requester_email === $user->email;
+            $isParticipant = TicketParticipant::where('ticket_id', $ticket->id)->where('user_id', $user->id)->exists();
+            if (!$isRequester && !$isParticipant) {
+                return response()->json(['message' => 'No autorizado'], 403);
+            }
+        }
+
         return response()->json($ticket);
     }
 
@@ -253,58 +288,172 @@ class TicketController extends Controller
 
     public function addComment(Request $request, $id)
     {
-        $validated = $request->validate([
-            'comment' => 'required|string',
+        $request->validate([
+            'comment'     => 'nullable|string',
             'is_internal' => 'boolean',
         ]);
 
-        $user = $request->user();
+        // Collect uploaded files — accepts files[], files, or file field names
+        $uploadedFiles = $this->collectUploadedFiles($request, ['files', 'file']);
+
+        $comment_text = $request->input('comment', '');
+
+        if (empty(trim($comment_text)) && count($uploadedFiles) === 0) {
+            return response()->json(['message' => 'Se requiere un mensaje o un archivo'], 422);
+        }
+
+        $user   = $request->user();
         $ticket = Ticket::findOrFail($id);
 
-        // Check permissions for role 'usuario'
-        if ($user->role->name === 'usuario' && $ticket->requester_email !== $user->email) {
-            return response()->json(['message' => 'No autorizado'], 403);
+        if ($user->role->name === 'usuario') {
+            $isRequester  = $ticket->requester_email === $user->email;
+            $isParticipant = TicketParticipant::where('ticket_id', $ticket->id)->where('user_id', $user->id)->exists();
+            if (!$isRequester && !$isParticipant) {
+                return response()->json(['message' => 'No autorizado'], 403);
+            }
         }
 
         $comment = TicketComment::create([
-            'ticket_id' => $ticket->id,
-            'user_id' => $user->id,
-            'comment' => $validated['comment'],
-            'is_internal' => $validated['is_internal'] ?? false,
+            'ticket_id'   => $ticket->id,
+            'user_id'     => $user->id,
+            'comment'     => $comment_text,
+            'is_internal' => $request->boolean('is_internal', false),
         ]);
 
-        // Si el ticket tiene sesión de widget activa y el comentario es público,
-        // crear un WidgetChatMessage para que el chat del usuario lo reciba en tiempo real.
-        if (!($validated['is_internal'] ?? false)) {
+        foreach ($uploadedFiles as $file) {
+            if (!$file || !$file->isValid()) continue;
+            if ($file->getSize() > 20 * 1024 * 1024) continue; // 20 MB max
+            $path = $file->store("attachments/tickets/{$ticket->id}", 'public');
+            \App\Models\TicketCommentAttachment::create([
+                'comment_id' => $comment->id,
+                'path'       => $path,
+                'name'       => $file->getClientOriginalName(),
+                'mime'       => $file->getMimeType(),
+            ]);
+        }
+
+        $comment->load('attachments');
+
+        $is_internal = $request->boolean('is_internal', false);
+
+        // If the ticket has an active widget session and the comment is public,
+        // create a WidgetChatMessage so the user's chat receives it in real time.
+        if (!$is_internal) {
             $session = WidgetChatSession::where('ticket_id', $ticket->id)
                 ->whereIn('status', ['active', 'pending'])
                 ->first();
 
             if ($session) {
-                \Log::info('Broadcasting agent reply to widget session', [
-                    'session_id' => $session->id,
-                    'ticket_id'  => $ticket->id,
-                    'agent_id'   => $user->id,
-                ]);
                 $widgetMsg = WidgetChatMessage::create([
                     'session_id'      => $session->id,
                     'sender_id'       => $user->id,
                     'sender_type'     => 'agent',
-                    'body'            => $validated['comment'],
+                    'body'            => $comment_text,
                     'attachment_path' => null,
                     'attachment_name' => null,
                     'is_read'         => false,
                 ]);
                 $widgetMsg->load('sender:id,name');
-                \Log::info('WidgetChatMessage created, broadcasting...', ['msg_id' => $widgetMsg->id]);
                 broadcast(new WidgetMessageSent($widgetMsg));
-                \Log::info('Broadcast dispatched successfully');
-            } else {
-                \Log::info('No active widget session found for ticket', ['ticket_id' => $ticket->id]);
             }
         }
 
+        broadcast(new \App\Events\TicketCommentAdded($comment));
+
+        TicketHistory::create([
+            'ticket_id' => $ticket->id,
+            'user_id'   => $user->id,
+            'action'    => $is_internal ? 'nota_interna' : 'comentario',
+            'new_value' => mb_substr($comment_text ?? '', 0, 255),
+        ]);
+
         return response()->json(['message' => 'Comentario agregado', 'comment' => $comment]);
+    }
+
+    public function getHistory($id)
+    {
+        $user   = request()->user();
+        $ticket = Ticket::with(['status', 'assignedAgent'])->findOrFail($id);
+
+        if ($user->role->name === 'usuario') {
+            $isRequester   = $ticket->requester_email === $user->email;
+            $isParticipant = TicketParticipant::where('ticket_id', $ticket->id)->where('user_id', $user->id)->exists();
+            if (!$isRequester && !$isParticipant) {
+                return response()->json(['message' => 'No autorizado'], 403);
+            }
+        }
+
+        $history  = TicketHistory::with('user:id,name,email')
+            ->where('ticket_id', $id)
+            ->orderBy('created_at')
+            ->get();
+
+        $comments = \App\Models\TicketComment::with(['user:id,name,email', 'attachments'])
+            ->where('ticket_id', $id)
+            ->orderBy('created_at')
+            ->get();
+
+        $timeline = collect();
+
+        foreach ($history as $h) {
+            $timeline->push([
+                'id'          => 'h-' . $h->id,
+                'type'        => $h->action,
+                'category'    => 'history',
+                'description' => $this->formatHistoryLabel($h->action, $h->old_value, $h->new_value),
+                'old_value'   => $h->old_value,
+                'new_value'   => $h->new_value,
+                'user'        => $h->user ? ['name' => $h->user->name, 'email' => $h->user->email] : null,
+                'timestamp'   => $h->created_at,
+            ]);
+        }
+
+        foreach ($comments as $c) {
+            $timeline->push([
+                'id'               => 'c-' . $c->id,
+                'type'             => $c->is_internal ? 'nota_interna' : 'comentario',
+                'category'         => 'comment',
+                'description'      => mb_substr($c->comment ?? '', 0, 180) . (mb_strlen($c->comment ?? '') > 180 ? '…' : ''),
+                'user'             => $c->user ? ['name' => $c->user->name, 'email' => $c->user->email] : null,
+                'attachments_count'=> $c->attachments->count(),
+                'is_internal'      => $c->is_internal,
+                'timestamp'        => $c->created_at,
+            ]);
+        }
+
+        $sorted = $timeline->sortBy('timestamp')->values();
+
+        return response()->json([
+            'ticket'   => [
+                'id'             => $ticket->id,
+                'ticket_number'  => $ticket->ticket_number,
+                'requester_name' => $ticket->requester_name,
+                'requester_email'=> $ticket->requester_email,
+                'status'         => $ticket->status,
+                'assigned_agent' => $ticket->assignedAgent ? ['name' => $ticket->assignedAgent->name] : null,
+                'created_at'     => $ticket->created_at,
+                'closed_at'      => $ticket->closed_at,
+            ],
+            'timeline' => $sorted,
+            'summary'  => [
+                'total_events'   => $sorted->count(),
+                'total_comments' => $comments->count(),
+                'total_history'  => $history->count(),
+            ],
+        ]);
+    }
+
+    private function formatHistoryLabel(string $action, ?string $old, ?string $new): string
+    {
+        return match ($action) {
+            'creado'        => 'Ticket creado',
+            'asignado'      => $new ?? 'Ticket asignado',
+            'escalado'      => 'Ticket escalado' . ($new ? ": {$new}" : ''),
+            'cambio_estado' => 'Estado cambiado' . ($old && $new ? ' de "' . $old . '" a "' . $new . '"' : ($new ? ' a "' . $new . '"' : '')),
+            'cerrado'       => 'Ticket cerrado',
+            'respuesta_canal' => $new ?? 'Respuesta enviada por canal',
+            default         => ucfirst(str_replace('_', ' ', $action)) . ($new ? ": {$new}" : ''),
+        };
     }
 
     public function getComments($id)
@@ -313,11 +462,15 @@ class TicketController extends Controller
         $ticket = Ticket::findOrFail($id);
         
         // Check permissions for role 'usuario'
-        if ($user->role->name === 'usuario' && $ticket->requester_email !== $user->email) {
-            return response()->json(['message' => 'No autorizado'], 403);
+        if ($user->role->name === 'usuario') {
+            $isRequester  = $ticket->requester_email === $user->email;
+            $isParticipant = TicketParticipant::where('ticket_id', $ticket->id)->where('user_id', $user->id)->exists();
+            if (!$isRequester && !$isParticipant) {
+                return response()->json(['message' => 'No autorizado'], 403);
+            }
         }
-        
-        $comments = TicketComment::with('user')
+
+        $comments = TicketComment::with(['user', 'attachments'])
             ->where('ticket_id', $ticket->id)
             ->orderBy('created_at', 'asc')
             ->get();
@@ -346,6 +499,143 @@ class TicketController extends Controller
         return response()->json($ticket);
     }
 
+    /**
+     * Reply to a ticket using a specific channel (email, whatsapp, portal).
+     * Also adds the reply as a public comment so the history stays unified.
+     */
+    public function replyByChannel(Request $request, $id)
+    {
+        $request->validate([
+            'message' => 'nullable|string',
+            'channel' => 'required|in:email,whatsapp,portal',
+        ]);
+
+        $message = $request->input('message', '');
+        $channel = $request->input('channel');
+
+        $uploadedFiles = $this->collectUploadedFiles($request, ['files', 'file']);
+
+        if (empty(trim($message)) && count($uploadedFiles) === 0) {
+            return response()->json(['message' => 'Se requiere un mensaje o un archivo'], 422);
+        }
+
+        $user   = $request->user();
+        $ticket = Ticket::with(['status', 'assignedAgent'])->findOrFail($id);
+
+        // Add to ticket timeline as a public comment
+        $replyComment = TicketComment::create([
+            'ticket_id'   => $ticket->id,
+            'user_id'     => $user->id,
+            'comment'     => $message,
+            'is_internal' => false,
+        ]);
+
+        foreach ($uploadedFiles as $file) {
+            if (!$file || !$file->isValid()) continue;
+            if ($file->getSize() > 20 * 1024 * 1024) continue;
+            $path = $file->store("attachments/tickets/{$ticket->id}", 'public');
+            \App\Models\TicketCommentAttachment::create([
+                'comment_id' => $replyComment->id,
+                'path'       => $path,
+                'name'       => $file->getClientOriginalName(),
+                'mime'       => $file->getMimeType(),
+            ]);
+        }
+
+        $replyComment->load('attachments');
+        broadcast(new \App\Events\TicketCommentAdded($replyComment));
+
+        $sent = false;
+
+        switch ($channel) {
+            case 'email':
+                $emailService = app(EmailChannelService::class);
+                $sent = $emailService->sendReply($ticket, $message, $user->id, $replyComment->attachments);
+                break;
+
+            case 'whatsapp':
+                $requester = \App\Models\User::where('email', $ticket->requester_email)->first();
+                if ($requester && $requester->whatsapp_phone) {
+                    $wa = app(WhatsAppService::class);
+                    $wa->sendText($requester->whatsapp_phone, $message);
+                    $sent = true;
+                }
+                break;
+
+            case 'portal':
+                // Already added as comment above; widget broadcast happens in addComment logic
+                $sent = true;
+                break;
+        }
+
+        TicketHistory::create([
+            'ticket_id' => $ticket->id,
+            'user_id'   => $user->id,
+            'action'    => 'respuesta_canal',
+            'new_value' => "Respuesta enviada por canal: {$channel}",
+        ]);
+
+        $replyComment->load(['user', 'attachments']);
+
+        return response()->json([
+            'message'   => 'Respuesta enviada',
+            'channel'   => $channel,
+            'delivered' => $sent,
+            'comment'   => $replyComment,
+        ]);
+    }
+
+    // ── Participants ──────────────────────────────────────────────────────────
+
+    public function getParticipants($id)
+    {
+        $ticket = Ticket::findOrFail($id);
+        $participants = $ticket->participants()->with('role')->get()->map(fn($u) => [
+            'id'    => $u->id,
+            'name'  => $u->name,
+            'email' => $u->email,
+            'role'  => $u->role?->name,
+        ]);
+        return response()->json($participants);
+    }
+
+    public function addParticipant(Request $request, $id)
+    {
+        $user = $request->user();
+        if (!in_array($user->role->name, ['admin', 'supervisor', 'agente'])) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+
+        $validated = $request->validate([
+            'user_id' => 'required|exists:users,id',
+        ]);
+
+        $ticket = Ticket::findOrFail($id);
+
+        TicketParticipant::firstOrCreate(
+            ['ticket_id' => $ticket->id, 'user_id' => $validated['user_id']],
+            ['added_by'  => $user->id]
+        );
+
+        $participant = User::find($validated['user_id']);
+        return response()->json([
+            'id'    => $participant->id,
+            'name'  => $participant->name,
+            'email' => $participant->email,
+        ]);
+    }
+
+    public function removeParticipant(Request $request, $id, $userId)
+    {
+        $user = $request->user();
+        if (!in_array($user->role->name, ['admin', 'supervisor', 'agente'])) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+
+        TicketParticipant::where('ticket_id', $id)->where('user_id', $userId)->delete();
+        return response()->json(['message' => 'Participante eliminado']);
+    }
+
     public function close(Request $request, $id)
     {
         $ticket = Ticket::findOrFail($id);
@@ -364,5 +654,22 @@ class TicketController extends Controller
         ]);
 
         return response()->json(['message' => 'Ticket cerrado correctamente']);
+    }
+
+    private function collectUploadedFiles(Request $request, array $fieldNames): array
+    {
+        $files = [];
+        foreach ($fieldNames as $field) {
+            $input = $request->file($field);
+            if ($input === null) continue;
+            if (is_array($input)) {
+                foreach ($input as $f) {
+                    if ($f instanceof \Illuminate\Http\UploadedFile) $files[] = $f;
+                }
+            } elseif ($input instanceof \Illuminate\Http\UploadedFile) {
+                $files[] = $input;
+            }
+        }
+        return array_filter($files, fn($f) => $f->isValid());
     }
 }

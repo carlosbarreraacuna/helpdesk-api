@@ -4,6 +4,7 @@ namespace App\Services\Assets;
 
 use App\Models\Asset;
 use App\Models\AssetAssignment;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
 class AssetAssignmentService
@@ -16,7 +17,9 @@ class AssetAssignmentService
             throw new \Exception("El activo no está disponible para asignación. Estado actual: {$asset->status}");
         }
 
-        return DB::transaction(function () use ($asset, $userId, $assignedBy, $reason) {
+        $userName = User::find($userId)?->name ?? "ID {$userId}";
+
+        return DB::transaction(function () use ($asset, $userId, $assignedBy, $reason, $userName) {
             $assignment = AssetAssignment::create([
                 'asset_id'    => $asset->id,
                 'user_id'     => $userId,
@@ -35,7 +38,7 @@ class AssetAssignmentService
 
             $this->eventService->record(
                 $asset, 'assignment',
-                "Activo asignado al usuario ID {$userId}",
+                "Activo asignado a {$userName}",
                 $assignedBy,
                 ['user_id' => $userId, 'reason' => $reason]
             );
@@ -51,7 +54,9 @@ class AssetAssignmentService
             ->latest('assigned_at')
             ->firstOrFail();
 
-        return DB::transaction(function () use ($asset, $assignment, $returnedBy, $returnNotes) {
+        $userName = User::find($assignment->user_id)?->name ?? "ID {$assignment->user_id}";
+
+        return DB::transaction(function () use ($asset, $assignment, $returnedBy, $returnNotes, $userName) {
             $assignment->update([
                 'returned_at'  => now(),
                 'return_notes' => $returnNotes,
@@ -65,7 +70,7 @@ class AssetAssignmentService
 
             $this->eventService->record(
                 $asset, 'user_change',
-                "Activo devuelto por usuario ID {$assignment->user_id}",
+                "Activo devuelto por {$userName}",
                 $returnedBy,
                 ['from_user' => $assignment->user_id, 'return_notes' => $returnNotes]
             );

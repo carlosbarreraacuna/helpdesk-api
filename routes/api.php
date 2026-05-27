@@ -26,6 +26,9 @@ use App\Http\Controllers\Api\Assets\AssetMaintenanceController;
 use App\Http\Controllers\Api\Assets\UserTechProfileController;
 use App\Http\Controllers\Api\Widget\WidgetController;
 use App\Http\Controllers\Api\Widget\ChatController;
+use App\Http\Controllers\Api\EmailChannelController;
+use App\Http\Controllers\Api\MeetingController;
+use App\Http\Controllers\Api\GoogleOAuthController;
 
 /*
 |--------------------------------------------------------------------------
@@ -76,12 +79,14 @@ Route::middleware('auth:sanctum')->group(function () {
     // Ticket routes
     Route::get('/tickets', [TicketController::class, 'index']); // List according to role
     Route::get('/tickets/{id}', [TicketController::class, 'show']);
+    Route::get('/tickets/{id}/peek', [TicketController::class, 'peek']);
     Route::get('/ticket-statuses', [TicketController::class, 'getStatuses']); // Get all statuses
     Route::post('/tickets/{id}/assign', [TicketController::class, 'assign']);
     Route::post('/tickets/{id}/escalate', [TicketController::class, 'escalate']);
     Route::patch('/tickets/{id}/status', [TicketController::class, 'updateStatus']);
     Route::post('/tickets/{id}/comments', [TicketController::class, 'addComment']);
     Route::get('/tickets/{id}/comments', [TicketController::class, 'getComments']);
+    Route::get('/tickets/{id}/history', [TicketController::class, 'getHistory']);
     Route::post('/tickets/{id}/close', [TicketController::class, 'close']);
     
     // User Management Routes
@@ -126,6 +131,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Permission Management Routes
     Route::get('/permissions', [PermissionController::class, 'index']);
     Route::post('/permissions', [PermissionController::class, 'store']);
+    Route::patch('/permissions/{id}', [PermissionController::class, 'update']);
+    Route::delete('/permissions/{id}', [PermissionController::class, 'destroy']);
     Route::get('/permissions/roles/{roleId}', [PermissionController::class, 'getRolePermissions']);
     Route::post('/permissions/roles/{roleId}', [PermissionController::class, 'updateRolePermissions']);
     Route::get('/permissions/users/{userId}', [PermissionController::class, 'getUserPermissions']);
@@ -352,6 +359,47 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/unread-count', [ChatController::class, 'unreadCount']);
     });
 
+    // ── Canal de Email ────────────────────────────────────────────────────────
+    Route::prefix('email-channels')->middleware('permission:settings.update')->group(function () {
+        Route::get('/',                                    [EmailChannelController::class, 'index']);
+        Route::post('/',                                   [EmailChannelController::class, 'store']);
+        Route::patch('/{emailChannel}',                    [EmailChannelController::class, 'update']);
+        Route::delete('/{emailChannel}',                   [EmailChannelController::class, 'destroy']);
+        Route::post('/{emailChannel}/test',                [EmailChannelController::class, 'testConnection']);
+        Route::post('/{emailChannel}/poll',                [EmailChannelController::class, 'pollNow']);
+    });
+    Route::get('/tickets/{ticketId}/email-messages',       [EmailChannelController::class, 'messages']);
+
+    // Reply to ticket by specific channel
+    Route::post('/tickets/{id}/reply-channel', [TicketController::class, 'replyByChannel']);
+
+    // Ticket participants
+    Route::get('/tickets/{id}/participants',             [TicketController::class, 'getParticipants']);
+    Route::post('/tickets/{id}/participants',            [TicketController::class, 'addParticipant']);
+    Route::delete('/tickets/{id}/participants/{userId}', [TicketController::class, 'removeParticipant']);
+
+    // Remote sessions (AnyDesk / TeamViewer)
+    Route::get('/tickets/{ticketId}/remote-sessions',                      [\App\Http\Controllers\Api\RemoteSessionController::class, 'index']);
+    Route::post('/tickets/{ticketId}/remote-sessions',                     [\App\Http\Controllers\Api\RemoteSessionController::class, 'store']);
+    Route::patch('/tickets/{ticketId}/remote-sessions/{sessionId}/finish', [\App\Http\Controllers\Api\RemoteSessionController::class, 'finish']);
+    Route::delete('/tickets/{ticketId}/remote-sessions/{sessionId}',       [\App\Http\Controllers\Api\RemoteSessionController::class, 'destroy']);
+
+    // ── Google Calendar / Meet ─────────────────────────────────────────────────
+    Route::prefix('google')->group(function () {
+        Route::get('/oauth/redirect-url', [GoogleOAuthController::class, 'redirectUrl']);
+        Route::get('/oauth/status',       [GoogleOAuthController::class, 'status']);
+        Route::delete('/oauth/disconnect',[GoogleOAuthController::class, 'disconnect']);
+    });
+
+    // Meetings
+    Route::get('/meetings',                              [MeetingController::class, 'index']);
+    Route::post('/meetings',                             [MeetingController::class, 'store']);
+    Route::get('/meetings/metrics',                      [MeetingController::class, 'metrics']);
+    Route::get('/meetings/{id}',                         [MeetingController::class, 'show']);
+    Route::patch('/meetings/{id}',                       [MeetingController::class, 'update']);
+    Route::delete('/meetings/{id}',                      [MeetingController::class, 'destroy']);
+    Route::post('/tickets/{ticketId}/quick-meet',        [MeetingController::class, 'quickMeet']);
+
     // Hoja de vida del usuario
     Route::get('/users/{userId}/profile/tech', [UserTechProfileController::class, 'profile']);
     Route::get('/users/{userId}/profile/assets', [UserTechProfileController::class, 'currentAssets']);
@@ -363,9 +411,19 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 });
 
+// Google OAuth2 callback — público (no lleva token de Sanctum)
+Route::get('/google/oauth/callback', [GoogleOAuthController::class, 'callback'])->name('google.oauth.callback');
+
 // WhatsApp Webhook Routes (públicas)
 Route::get('/whatsapp/webhook', [WhatsAppWebhookController::class, 'verify']);
 Route::post('/whatsapp/webhook', [WhatsAppWebhookController::class, 'webhook']);
+
+// Gmail Pub/Sub push webhook (público — Google no envía auth tokens)
+Route::post('/gmail/webhook', [\App\Http\Controllers\Api\GmailWebhookController::class, 'push']);
+
+// Gmail OAuth2 flow — callback must be defined BEFORE the dynamic {channelId} route
+Route::get('/gmail/oauth/callback',    [\App\Http\Controllers\Api\GmailWebhookController::class, 'oauthCallback'])->name('gmail.oauth.callback');
+Route::get('/gmail/oauth/{channelId}', [\App\Http\Controllers\Api\GmailWebhookController::class, 'oauthRedirect'])->name('gmail.oauth.redirect');
 
 // Enviar mensaje manual desde el sistema (requiere autenticación)
 Route::middleware('auth:sanctum')->group(function () {
