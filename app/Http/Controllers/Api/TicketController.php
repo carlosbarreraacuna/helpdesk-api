@@ -16,6 +16,9 @@ use App\Models\WidgetChatMessage;
 use App\Events\WidgetMessageSent;
 use App\Services\EmailChannelService;
 use App\Services\WhatsAppService;
+use App\Services\TicketAssignmentService;
+use App\Mail\TicketCreatedMail;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -94,12 +97,17 @@ class TicketController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'requester_name' => 'required|string|max:255',
-            'requester_email' => 'required|email',
-            'requester_area' => 'required|string',
-            'description' => 'required|string',
-            'priority' => 'required|in:baja,media,alta',
-            'attachment' => 'nullable|file|mimes:jpg,png,jpeg,gif|max:5120',
+            'requester_name'      => 'required|string|max:255',
+            'requester_email'     => 'required|email',
+            'requester_area'      => 'required|string',
+            'description'         => 'required|string',
+            'priority'            => 'required|in:baja,media,alta',
+            'category_id'         => 'nullable|exists:ticket_categories,id',
+            'attachment'          => 'nullable|file|mimes:jpg,png,jpeg,gif|max:5120',
+            'bot_context'         => 'nullable|string',
+            'bot_kb_article_id'   => 'nullable|integer',
+            'bot_kb_article_title'=> 'nullable|string',
+            'bot_kb_helpful'      => 'nullable|in:0,1',
         ]);
 
         // Generate unique ticket number
@@ -118,23 +126,70 @@ class TicketController extends Controller
         $newStatus = TicketStatus::where('name', 'nuevo')->first();
 
         $ticket = Ticket::create([
-            'ticket_number' => $ticketNumber,
-            'requester_name' => $validated['requester_name'],
-            'requester_email' => $validated['requester_email'],
-            'requester_area' => $validated['requester_area'],
-            'description' => $validated['description'],
-            'attachment_path' => $attachmentPath,
-            'verification_code' => $verificationCode,
-            'priority' => $validated['priority'],
-            'status_id' => $newStatus->id,
+            'ticket_number'    => $ticketNumber,
+            'requester_name'   => $validated['requester_name'],
+            'requester_email'  => $validated['requester_email'],
+            'requester_area'   => $validated['requester_area'],
+            'description'      => $validated['description'],
+            'attachment_path'  => $attachmentPath,
+            'verification_code'=> $verificationCode,
+            'priority'         => $validated['priority'],
+            'category_id'      => $validated['category_id'] ?? null,
+            'status_id'        => $newStatus->id,
         ]);
 
         // Register in history
         TicketHistory::create([
             'ticket_id' => $ticket->id,
-            'action' => 'creado',
+            'action'    => 'creado',
             'new_value' => 'Ticket creado desde portal público',
         ]);
+
+        // Auto-assign to work group
+        app(TicketAssignmentService::class)->assign($ticket);
+
+        // If created from chatbot, save transcript as system comment
+        $botContext      = $request->input('bot_context');
+        $botKbTitle      = $request->input('bot_kb_article_title');
+        $botKbHelpful    = $request->filled('bot_kb_helpful') ? (bool) $request->input('bot_kb_helpful') : null;
+
+        if ($botContext) {
+            $lines = ["🤖 Conversación previa con el asistente virtual:\n"];
+            foreach (explode("\n", $botContext) as $line) {
+                if (trim($line) !== '') {
+                    $lines[] = $line;
+                }
+            }
+            if ($botKbTitle) {
+                $helpfulText = $botKbHelpful === true ? 'Sí' : ($botKbHelpful === false ? 'No' : 'No indicado');
+                $lines[] = "\n📖 Artículo sugerido: {$botKbTitle} | ¿Fue útil? {$helpfulText}";
+            }
+            \App\Models\TicketComment::create([
+                'ticket_id'   => $ticket->id,
+                'comment'     => implode("\n", $lines),
+                'user_id'     => null,
+                'is_internal' => false,
+            ]);
+        }
+
+        // Send email notifications
+        $ticket->load(['status', 'category']);
+        try {
+            Mail::to($ticket->requester_email)
+                ->queue(new TicketCreatedMail($ticket, $botContext, $botKbTitle, $botKbHelpful, false));
+        } catch (\Exception $e) {
+            \Log::warning('Failed to send ticket created email to requester', ['error' => $e->getMessage()]);
+        }
+
+        $ticket->refresh()->load(['assignedAgent']);
+        if ($ticket->assignedAgent) {
+            try {
+                Mail::to($ticket->assignedAgent->email)
+                    ->queue(new TicketCreatedMail($ticket, $botContext, $botKbTitle, $botKbHelpful, true));
+            } catch (\Exception $e) {
+                \Log::warning('Failed to send ticket created email to agent', ['error' => $e->getMessage()]);
+            }
+        }
 
         broadcast(new \App\Events\TicketCreated($ticket));
 
@@ -252,6 +307,24 @@ class TicketController extends Controller
         ]);
 
         return response()->json(['message' => 'Ticket escalado correctamente']);
+    }
+
+    public function returnToGroup(Request $request, $id)
+    {
+        $user   = $request->user();
+        $ticket = Ticket::findOrFail($id);
+
+        if ($user->role->name === 'agente' && $ticket->assigned_to !== $user->id) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        app(TicketAssignmentService::class)->returnToGroup($ticket, $user, $validated['reason'] ?? '');
+
+        return response()->json(['message' => 'Ticket devuelto al grupo correctamente.']);
     }
 
     public function updateStatus(Request $request, $id)

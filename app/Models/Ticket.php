@@ -27,6 +27,8 @@ class Ticket extends Model
         'channel',
         'channel_ref',
         'is_read',
+        'category_id',
+        'work_group_id',
     ];
 
     protected $casts = [
@@ -81,5 +83,15 @@ class Ticket extends Model
     public function participantRecords()
     {
         return $this->hasMany(TicketParticipant::class);
+    }
+
+    public function category()
+    {
+        return $this->belongsTo(TicketCategory::class, 'category_id');
+    }
+
+    public function workGroup()
+    {
+        return $this->belongsTo(WorkGroup::class, 'work_group_id');
     }
 }

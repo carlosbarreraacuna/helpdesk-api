@@ -29,6 +29,8 @@ use App\Http\Controllers\Api\Widget\ChatController;
 use App\Http\Controllers\Api\EmailChannelController;
 use App\Http\Controllers\Api\MeetingController;
 use App\Http\Controllers\Api\GoogleOAuthController;
+use App\Http\Controllers\Api\TicketCategoryController;
+use App\Http\Controllers\Api\WorkGroupController;
 
 /*
 |--------------------------------------------------------------------------
@@ -83,6 +85,31 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/ticket-statuses', [TicketController::class, 'getStatuses']); // Get all statuses
     Route::post('/tickets/{id}/assign', [TicketController::class, 'assign']);
     Route::post('/tickets/{id}/escalate', [TicketController::class, 'escalate']);
+    Route::post('/tickets/{id}/return-to-group', [TicketController::class, 'returnToGroup']);
+
+    // Ticket categories (public read, admin write)
+    Route::get('/ticket-categories', [TicketCategoryController::class, 'index']);
+    Route::middleware('permission:users.update')->group(function () {
+        Route::get('/ticket-categories/all', [TicketCategoryController::class, 'indexAll']);
+        Route::post('/ticket-categories', [TicketCategoryController::class, 'store']);
+        Route::patch('/ticket-categories/{id}', [TicketCategoryController::class, 'update']);
+        Route::delete('/ticket-categories/{id}', [TicketCategoryController::class, 'destroy']);
+    });
+
+    // Work groups (admin only)
+    Route::middleware('permission:users.update')->group(function () {
+        Route::get('/work-groups', [WorkGroupController::class, 'index']);
+        Route::post('/work-groups', [WorkGroupController::class, 'store']);
+        Route::patch('/work-groups/{id}', [WorkGroupController::class, 'update']);
+        Route::delete('/work-groups/{id}', [WorkGroupController::class, 'destroy']);
+        Route::put('/work-groups/{id}/agents', [WorkGroupController::class, 'syncAgents']);
+        Route::post('/work-groups/{id}/agents', [WorkGroupController::class, 'addAgent']);
+        Route::delete('/work-groups/{id}/agents/{agentId}', [WorkGroupController::class, 'removeAgent']);
+        Route::put('/work-groups/{id}/categories', [WorkGroupController::class, 'syncCategories']);
+        Route::post('/work-groups/{id}/categories', [WorkGroupController::class, 'addCategory']);
+        Route::delete('/work-groups/{id}/categories/{categoryId}', [WorkGroupController::class, 'removeCategory']);
+        Route::get('/work-groups/available-agents', [WorkGroupController::class, 'availableAgents']);
+    });
     Route::patch('/tickets/{id}/status', [TicketController::class, 'updateStatus']);
     Route::post('/tickets/{id}/comments', [TicketController::class, 'addComment']);
     Route::get('/tickets/{id}/comments', [TicketController::class, 'getComments']);
