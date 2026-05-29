@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\MeetingController;
 use App\Http\Controllers\Api\GoogleOAuthController;
 use App\Http\Controllers\Api\TicketCategoryController;
 use App\Http\Controllers\Api\WorkGroupController;
+use App\Http\Controllers\Api\AiController;
 
 /*
 |--------------------------------------------------------------------------
@@ -74,6 +75,17 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
+
+    // ─── IA ────────────────────────────────────────────────────────────────────
+    Route::prefix('ai')->group(function () {
+        Route::post('/classify-ticket',       [AiController::class, 'classifyTicket']);
+        Route::post('/tickets/{id}/suggest-reply', [AiController::class, 'suggestReply']);
+        Route::post('/tickets/{id}/summarize',     [AiController::class, 'summarizeTicket']);
+        Route::post('/kb-search',             [AiController::class, 'kbSearch']);
+        Route::post('/widget-chat',           [AiController::class, 'widgetChat']);
+        Route::get('/sla-risk',               [AiController::class, 'slaRisk']);
+        Route::post('/sentiment',             [AiController::class, 'sentiment']);
+    });
     
     // Menu routes
     Route::get('/menu/user', [MenuItemController::class, 'getUserMenu']);

@@ -49,4 +49,16 @@ return [
         'redirect_uri'  => env('GOOGLE_REDIRECT_URI'),
     ],
 
+    'ai' => [
+        'provider' => env('AI_PROVIDER', 'groq'), // 'groq' (gratis) | 'anthropic' (pago)
+    ],
+
+    'anthropic' => [
+        'key' => env('ANTHROPIC_API_KEY'),
+    ],
+
+    'groq' => [
+        'key' => env('GROQ_API_KEY'),
+    ],
+
 ];
