@@ -120,6 +120,15 @@ class MenuItemSeeder extends Seeder
                 'order' => 6,
                 'is_system' => false,
             ],
+            [
+                'key' => 'admin.work-groups',
+                'label' => 'Grupos de Trabajo',
+                'icon' => 'Users2',
+                'route' => '/admin/grupos',
+                'parent_id' => $adminParent->id,
+                'order' => 7,
+                'is_system' => false,
+            ],
         ];
 
         foreach ($subItems as $item) {
