@@ -10,3 +10,6 @@ Artisan::command('inspire', function () {
 
 // Renew Gmail Pub/Sub watch every 6 days (Google expires after 7 days)
 Schedule::command('gmail:watch')->weekly();
+
+// Auto-close tickets where the validation deadline has expired
+Schedule::job(new \App\Jobs\AutoCloseExpiredValidations)->hourly();

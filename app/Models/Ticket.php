@@ -29,6 +29,11 @@ class Ticket extends Model
         'is_read',
         'category_id',
         'work_group_id',
+        'validation_requested_at',
+        'validation_deadline',
+        'validation_token',
+        'validation_approved_at',
+        'validation_rejected_count',
     ];
 
     protected $casts = [
@@ -36,6 +41,10 @@ class Ticket extends Model
         'sla_due_date' => 'datetime',
         'resolved_at' => 'datetime',
         'closed_at' => 'datetime',
+        'validation_requested_at' => 'datetime',
+        'validation_deadline' => 'datetime',
+        'validation_approved_at' => 'datetime',
+        'validation_rejected_count' => 'integer',
     ];
 
     public function status()
@@ -93,5 +102,10 @@ class Ticket extends Model
     public function workGroup()
     {
         return $this->belongsTo(WorkGroup::class, 'work_group_id');
+    }
+
+    public function validations()
+    {
+        return $this->hasMany(TicketValidation::class);
     }
 }

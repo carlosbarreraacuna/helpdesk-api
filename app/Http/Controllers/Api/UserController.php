@@ -14,6 +14,46 @@ use Illuminate\Validation\Rule;
 class UserController extends Controller
 {
     /**
+     * Returns active agents and supervisors for ticket assignment.
+     * Accessible to any authenticated user (no special permission required).
+     */
+    public function assignable()
+    {
+        $roleIds = \App\Models\Role::whereIn('name', ['agente', 'supervisor'])->pluck('id');
+
+        $users = User::with('role:id,name,display_name')
+            ->whereIn('role_id', $roleIds)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'role_id']);
+
+        return response()->json(['data' => $users]);
+    }
+
+    /**
+     * Returns active portal users (role: usuario) for participant search.
+     * Accessible to any authenticated user (no special permission required).
+     */
+    public function portalUsers(Request $request)
+    {
+        $roleId = \App\Models\Role::where('name', 'usuario')->value('id');
+
+        $query = User::where('role_id', $roleId)->where('is_active', true);
+
+        if ($request->filled('search')) {
+            $term = '%' . $request->search . '%';
+            $query->where(function ($q) use ($term) {
+                $q->whereRaw('LOWER(name) LIKE LOWER(?)', [$term])
+                  ->orWhereRaw('LOWER(email) LIKE LOWER(?)', [$term]);
+            });
+        }
+
+        $users = $query->orderBy('name')->limit(50)->get(['id', 'name', 'email', 'role_id']);
+
+        return response()->json(['data' => $users]);
+    }
+
+    /**
      * Lista todos los usuarios con filtros
      */
     public function index(Request $request)
@@ -21,13 +61,19 @@ class UserController extends Controller
         $query = User::with(['role', 'area']);
 
         // Filtros opcionales - convertir strings vacíos a null
-        $roleId = $request->get('role_id');
-        $areaId = $request->get('area_id');
+        $roleId  = $request->get('role_id');
+        $roles   = $request->get('roles');   // array of role names: ?roles[]=agente&roles[]=supervisor
+        $areaId  = $request->get('area_id');
         $isActive = $request->get('is_active');
-        $search = $request->get('search');
+        $search  = $request->get('search');
 
         if ($roleId && $roleId !== '') {
             $query->where('role_id', $roleId);
+        }
+
+        if ($roles && is_array($roles) && count($roles) > 0) {
+            $roleIds = \App\Models\Role::whereIn('name', $roles)->pluck('id');
+            $query->whereIn('role_id', $roleIds);
         }
 
         if ($areaId && $areaId !== '') {
@@ -114,6 +160,13 @@ class UserController extends Controller
 
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:255',
+            'username' => [
+                'sometimes',
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('users')->ignore($user->id)
+            ],
             'email' => [
                 'sometimes',
                 'required',
@@ -133,15 +186,21 @@ class UserController extends Controller
             'whatsapp_phone' => 'nullable|string|max:20',
             'is_active' => 'boolean',
         ], [
-            'cedula.required' => 'La cédula es obligatoria',
-            'cedula.unique' => 'La cédula ya está registrada',
-            'cedula.max' => 'La cédula no puede tener más de 20 caracteres',
+            'username.unique'  => 'El nombre de usuario ya está en uso',
+            'cedula.required'  => 'La cédula es obligatoria',
+            'cedula.unique'    => 'La cédula ya está registrada',
+            'cedula.max'       => 'La cédula no puede tener más de 20 caracteres',
         ]);
 
-        // Si se cambia la contraseña
-        if ($request->has('password')) {
+        // Actualizar contraseña solo si se envía un valor no vacío
+        if ($request->filled('password')) {
             $request->validate([
-                'password' => 'required|string|min:8|confirmed',
+                'password'              => 'required|string|min:8|confirmed',
+                'password_confirmation' => 'required',
+            ], [
+                'password.min'                   => 'La contraseña debe tener al menos 8 caracteres',
+                'password.confirmed'             => 'Las contraseñas no coinciden',
+                'password_confirmation.required' => 'Debes confirmar la contraseña',
             ]);
             $validated['password'] = Hash::make($request->password);
         }

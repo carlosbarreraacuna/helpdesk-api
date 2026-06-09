@@ -52,6 +52,22 @@ Route::options('{any}', function () {
 Route::post('/portal/tickets', [TicketController::class, 'store']);
 Route::post('/portal/tickets/search', [TicketController::class, 'searchPublic']);
 
+// Public ticket validation — accessible via email link (no auth required)
+Route::post('/portal/tickets/validate/{token}', [TicketController::class, 'validateTicket']);
+Route::get('/portal/tickets/validate/{token}', function (string $token) {
+    $ticket = \App\Models\Ticket::where('validation_token', $token)->first();
+    if (!$ticket) {
+        return response()->json(['message' => 'Enlace inválido o expirado'], 404);
+    }
+    return response()->json([
+        'ticket_number'      => $ticket->ticket_number,
+        'requester_name'     => $ticket->requester_name,
+        'description'        => $ticket->description,
+        'validation_deadline'=> $ticket->validation_deadline,
+        'status'             => $ticket->status?->name,
+    ]);
+});
+
 // Public KB routes (no auth required)
 Route::get('/portal/kb/categories', [KbCategoryController::class, 'index']);
 Route::get('/portal/kb/articles', [KbArticleController::class, 'index']);
@@ -90,6 +106,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // Menu routes
     Route::get('/menu/user', [MenuItemController::class, 'getUserMenu']);
     
+    // Returns agents + supervisors for ticket assignment — accessible to all authenticated roles
+    Route::get('/users/assignable', [UserController::class, 'assignable']);
+    // Returns portal users (role: usuario) for participant search — accessible to all authenticated roles
+    Route::get('/users/portal-users', [UserController::class, 'portalUsers']);
+
     // Ticket routes
     Route::get('/tickets', [TicketController::class, 'index']); // List according to role
     Route::get('/tickets/{id}', [TicketController::class, 'show']);
@@ -127,6 +148,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/tickets/{id}/comments', [TicketController::class, 'getComments']);
     Route::get('/tickets/{id}/history', [TicketController::class, 'getHistory']);
     Route::post('/tickets/{id}/close', [TicketController::class, 'close']);
+    Route::post('/tickets/{id}/request-validation', [TicketController::class, 'requestValidation']);
+    Route::get('/tickets/{id}/validation-status', [TicketController::class, 'getValidationStatus']);
+    Route::post('/tickets/{id}/validate-portal', [TicketController::class, 'validateByPortal']);
+    Route::post('/tickets/validate/{token}', [TicketController::class, 'validateTicket']);
     
     // User Management Routes
     Route::middleware('permission:users.view')->group(function () {

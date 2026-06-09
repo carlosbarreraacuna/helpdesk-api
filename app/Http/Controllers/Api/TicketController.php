@@ -9,6 +9,8 @@ use App\Models\TicketHistory;
 use App\Models\TicketComment;
 use App\Models\TicketParticipant;
 use App\Models\TicketStatus;
+use App\Models\TicketValidation;
+use App\Models\HelpdeskSetting;
 use App\Models\SlaConfig;
 use App\Models\User;
 use App\Models\WidgetChatSession;
@@ -18,6 +20,8 @@ use App\Services\EmailChannelService;
 use App\Services\WhatsAppService;
 use App\Services\TicketAssignmentService;
 use App\Mail\TicketCreatedMail;
+use App\Mail\TicketValidationRequestMail;
+use App\Mail\TicketValidationResultMail;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -333,26 +337,26 @@ class TicketController extends Controller
             'status' => 'required|string|exists:ticket_statuses,name',
         ]);
 
-        $ticket = Ticket::findOrFail($id);
+        $ticket = Ticket::with('status')->findOrFail($id);
+        $oldStatusName = $ticket->status->name;
         $newStatus = TicketStatus::where('name', $validated['status'])->first();
 
-        $ticket->update([
-            'status_id' => $newStatus->id,
-        ]);
+        $ticket->update(['status_id' => $newStatus->id]);
 
-        // Update timestamps based on status
         if ($validated['status'] === 'resuelto') {
             $ticket->update(['resolved_at' => now()]);
+            // Auto-trigger validation request when resolved
+            $this->triggerValidationRequest($ticket, $request->user());
+            return response()->json(['message' => 'Estado actualizado y solicitud de validación enviada al usuario']);
         } elseif ($validated['status'] === 'cerrado') {
             $ticket->update(['closed_at' => now()]);
         }
 
-        // History
         TicketHistory::create([
             'ticket_id' => $ticket->id,
-            'user_id' => $request->user()->id,
-            'action' => 'cambio_estado',
-            'old_value' => $ticket->status->name,
+            'user_id'   => $request->user()->id,
+            'action'    => 'cambio_estado',
+            'old_value' => $oldStatusName,
             'new_value' => $validated['status'],
         ]);
 
@@ -519,13 +523,16 @@ class TicketController extends Controller
     private function formatHistoryLabel(string $action, ?string $old, ?string $new): string
     {
         return match ($action) {
-            'creado'        => 'Ticket creado',
-            'asignado'      => $new ?? 'Ticket asignado',
-            'escalado'      => 'Ticket escalado' . ($new ? ": {$new}" : ''),
-            'cambio_estado' => 'Estado cambiado' . ($old && $new ? ' de "' . $old . '" a "' . $new . '"' : ($new ? ' a "' . $new . '"' : '')),
-            'cerrado'       => 'Ticket cerrado',
-            'respuesta_canal' => $new ?? 'Respuesta enviada por canal',
-            default         => ucfirst(str_replace('_', ' ', $action)) . ($new ? ": {$new}" : ''),
+            'creado'                 => 'Ticket creado',
+            'asignado'               => $new ?? 'Ticket asignado',
+            'escalado'               => 'Ticket escalado' . ($new ? ": {$new}" : ''),
+            'cambio_estado'          => 'Estado cambiado' . ($old && $new ? ' de "' . $old . '" a "' . $new . '"' : ($new ? ' a "' . $new . '"' : '')),
+            'cerrado'                => 'Ticket cerrado',
+            'respuesta_canal'        => $new ?? 'Respuesta enviada por canal',
+            'validacion_solicitada'  => 'Validación solicitada al usuario',
+            'validacion_aprobada'    => 'Usuario aprobó la solución' . ($new ? ": {$new}" : ''),
+            'validacion_rechazada'   => 'Usuario rechazó — aún hay problemas' . ($new ? ": {$new}" : ''),
+            default                  => ucfirst(str_replace('_', ' ', $action)) . ($new ? ": {$new}" : ''),
         };
     }
 
@@ -711,22 +718,253 @@ class TicketController extends Controller
 
     public function close(Request $request, $id)
     {
-        $ticket = Ticket::findOrFail($id);
-        
+        $user   = $request->user();
+        $ticket = Ticket::with('status')->findOrFail($id);
+
+        // Only the assigned agent and supervisors/admins can close
+        if ($user->role->name === 'agente' && $ticket->assigned_to !== $user->id) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+
+        // Block closure if validation is required but not yet approved
+        if ($ticket->validation_requested_at && !$ticket->validation_approved_at) {
+            return response()->json([
+                'message' => 'El ticket no puede cerrarse hasta que el usuario confirme que la solución fue satisfactoria.',
+                'validation_pending' => true,
+            ], 422);
+        }
+
         $ticket->update([
-            'status_id' => TicketStatus::where('name', 'cerrado')->first()->id,
-            'closed_at' => now(),
+            'status_id'      => TicketStatus::where('name', 'cerrado')->first()->id,
+            'closed_at'      => now(),
+            'validation_token' => null,
         ]);
 
-        // History
         TicketHistory::create([
             'ticket_id' => $ticket->id,
-            'user_id' => $request->user()->id,
-            'action' => 'cerrado',
+            'user_id'   => $user->id,
+            'action'    => 'cerrado',
             'new_value' => 'Ticket cerrado',
         ]);
 
         return response()->json(['message' => 'Ticket cerrado correctamente']);
+    }
+
+    public function requestValidation(Request $request, $id)
+    {
+        $user   = $request->user();
+        $ticket = Ticket::with('status')->findOrFail($id);
+
+        if (!in_array($user->role->name, ['agente', 'supervisor', 'admin'])) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+
+        if ($user->role->name === 'agente' && $ticket->assigned_to !== $user->id) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+
+        $this->triggerValidationRequest($ticket, $user);
+
+        return response()->json(['message' => 'Solicitud de validación enviada al usuario']);
+    }
+
+    private function triggerValidationRequest(Ticket $ticket, ?User $requestedBy): void
+    {
+        $pendingStatus  = TicketStatus::where('name', 'pendiente_validacion')->first();
+        $timeoutHours   = (int) HelpdeskSetting::get('validation_timeout_hours', 48);
+        $token          = Str::random(48);
+        $frontendUrl    = config('app.frontend_url', 'http://localhost:3000');
+        $validationUrl  = "{$frontendUrl}/validate/{$token}";
+
+        $ticket->update([
+            'status_id'               => $pendingStatus->id,
+            'validation_requested_at' => now(),
+            'validation_deadline'     => now()->addHours($timeoutHours),
+            'validation_token'        => $token,
+            'validation_approved_at'  => null,
+        ]);
+
+        TicketValidation::create([
+            'ticket_id'           => $ticket->id,
+            'action'              => 'requested',
+            'performed_by_user_id'=> $requestedBy?->id,
+            'performed_by_email'  => $requestedBy?->email,
+        ]);
+
+        TicketHistory::create([
+            'ticket_id' => $ticket->id,
+            'user_id'   => $requestedBy?->id,
+            'action'    => 'validacion_solicitada',
+            'new_value' => 'Solicitud de validación enviada al usuario',
+        ]);
+
+        try {
+            Mail::to($ticket->requester_email)
+                ->queue(new TicketValidationRequestMail($ticket, $validationUrl));
+        } catch (\Exception $e) {
+            \Log::warning('Failed to send validation request email', ['error' => $e->getMessage()]);
+        }
+    }
+
+    public function validateTicket(Request $request, string $token)
+    {
+        $validated = $request->validate([
+            'action'  => 'required|in:approved,rejected',
+            'comment' => 'nullable|string|max:1000',
+        ]);
+
+        if ($validated['action'] === 'rejected') {
+            $request->validate(['comment' => 'required|string|max:1000']);
+        }
+
+        $ticket = Ticket::with(['status', 'assignedAgent'])
+            ->where('validation_token', $token)
+            ->firstOrFail();
+
+        $pendingStatus = TicketStatus::where('name', 'pendiente_validacion')->first();
+        if ($ticket->status_id !== $pendingStatus->id) {
+            return response()->json(['message' => 'Este enlace ya no es válido o el ticket fue procesado.'], 422);
+        }
+
+        $user         = $request->user();
+        $performerName = $user?->name ?? $ticket->requester_name;
+
+        return $this->processValidationResult($ticket, $validated['action'], $validated['comment'] ?? null, $performerName, $user);
+    }
+
+    public function validateByPortal(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'action'  => 'required|in:approved,rejected',
+            'comment' => 'nullable|string|max:1000',
+        ]);
+
+        if ($validated['action'] === 'rejected') {
+            $request->validate(['comment' => 'required|string|max:1000']);
+        }
+
+        $user   = $request->user();
+        $ticket = Ticket::with(['status', 'assignedAgent'])->findOrFail($id);
+
+        // Only the requester (by email) can validate
+        if ($ticket->requester_email !== $user->email) {
+            return response()->json(['message' => 'Solo el solicitante puede validar este ticket.'], 403);
+        }
+
+        $pendingStatus = TicketStatus::where('name', 'pendiente_validacion')->first();
+        if ($ticket->status_id !== $pendingStatus->id) {
+            return response()->json(['message' => 'Este ticket no está pendiente de validación.'], 422);
+        }
+
+        // Delegate to shared logic by temporarily setting a fake token path
+        $fakeRequest = new \Illuminate\Http\Request();
+        $fakeRequest->merge([
+            'action'  => $validated['action'],
+            'comment' => $validated['comment'] ?? null,
+        ]);
+        $fakeRequest->setUserResolver(fn() => $user);
+
+        return $this->processValidationResult($ticket, $validated['action'], $validated['comment'] ?? null, $user->name, $user);
+    }
+
+    private function processValidationResult(Ticket $ticket, string $action, ?string $comment, string $performerName, ?User $user): \Illuminate\Http\JsonResponse
+    {
+        $performerEmail = $user?->email ?? $ticket->requester_email;
+
+        TicketValidation::create([
+            'ticket_id'            => $ticket->id,
+            'action'               => $action,
+            'comment'              => $comment,
+            'performed_by_email'   => $performerEmail,
+            'performed_by_user_id' => $user?->id,
+        ]);
+
+        if ($action === 'approved') {
+            $ticket->update([
+                'validation_approved_at' => now(),
+                'validation_token'       => null,
+            ]);
+
+            TicketHistory::create([
+                'ticket_id' => $ticket->id,
+                'user_id'   => $user?->id,
+                'action'    => 'validacion_aprobada',
+                'new_value' => 'Usuario confirmó que la solución fue satisfactoria' . ($comment ? ": {$comment}" : ''),
+            ]);
+
+            $agentEmail = $ticket->assignedAgent?->email;
+            if ($agentEmail) {
+                try {
+                    Mail::to($agentEmail)->queue(new TicketValidationResultMail($ticket, 'approved', $comment, $performerName));
+                } catch (\Exception $e) {
+                    \Log::warning('Failed to send validation approved email', ['error' => $e->getMessage()]);
+                }
+            }
+
+            return response()->json(['message' => 'Gracias por confirmar. El agente podrá cerrar el ticket.', 'action' => 'approved']);
+        }
+
+        // Rejected
+        $maxRejections = (int) HelpdeskSetting::get('max_validation_rejections', 3);
+        $newCount      = $ticket->validation_rejected_count + 1;
+        $inProgressStatus = TicketStatus::where('name', 'en_progreso')->first();
+
+        $ticket->update([
+            'status_id'                 => $inProgressStatus->id,
+            'validation_requested_at'   => null,
+            'validation_deadline'       => null,
+            'validation_token'          => null,
+            'validation_rejected_count' => $newCount,
+        ]);
+
+        TicketHistory::create([
+            'ticket_id' => $ticket->id,
+            'user_id'   => $user?->id,
+            'action'    => 'validacion_rechazada',
+            'new_value' => "Usuario rechazó la validación ({$newCount}): " . ($comment ?? ''),
+        ]);
+
+        $agentEmail = $ticket->assignedAgent?->email;
+        if ($agentEmail) {
+            try {
+                Mail::to($agentEmail)->queue(new TicketValidationResultMail($ticket, 'rejected', $comment, $performerName));
+            } catch (\Exception $e) {
+                \Log::warning('Failed to send validation rejected email', ['error' => $e->getMessage()]);
+            }
+        }
+
+        if ($newCount >= $maxRejections) {
+            $escalatedStatus = TicketStatus::where('name', 'escalado')->first();
+            $ticket->update(['status_id' => $escalatedStatus->id]);
+            TicketHistory::create([
+                'ticket_id' => $ticket->id,
+                'user_id'   => null,
+                'action'    => 'escalado',
+                'new_value' => "Escalado automáticamente tras {$newCount} rechazos de validación.",
+            ]);
+        }
+
+        return response()->json(['message' => 'Hemos recibido tu reporte. El equipo revisará el problema.', 'action' => 'rejected']);
+    }
+
+    public function getValidationStatus(Request $request, $id)
+    {
+        $ticket = Ticket::with(['status', 'validations'])->findOrFail($id);
+
+        return response()->json([
+            'validation_requested_at'  => $ticket->validation_requested_at,
+            'validation_deadline'      => $ticket->validation_deadline,
+            'validation_approved_at'   => $ticket->validation_approved_at,
+            'validation_rejected_count'=> $ticket->validation_rejected_count,
+            'status'                   => $ticket->status->name,
+            'can_close'                => (bool) $ticket->validation_approved_at,
+            'history'                  => $ticket->validations->map(fn($v) => [
+                'action'     => $v->action,
+                'comment'    => $v->comment,
+                'by'         => $v->performed_by_email,
+                'created_at' => $v->created_at,
+            ]),
+        ]);
     }
 
     private function collectUploadedFiles(Request $request, array $fieldNames): array
