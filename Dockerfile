@@ -55,6 +55,6 @@ RUN chown -R www-data:www-data /app/storage /app/bootstrap/cache \
 COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/opcache.ini
 COPY docker/php/production.ini /usr/local/etc/php/conf.d/production.ini
 
-EXPOSE 8000
+EXPOSE ${PORT:-8000}
 
-CMD ["sh", "-c", "php artisan migrate --force && php artisan config:cache && php artisan route:cache && php artisan storage:link && php artisan serve --host=0.0.0.0 --port=8000"]
+CMD ["sh", "-c", "php artisan migrate --force && php artisan config:cache && php artisan route:cache && php artisan storage:link && php artisan serve --host=0.0.0.0 --port=${PORT:-8000}"]
