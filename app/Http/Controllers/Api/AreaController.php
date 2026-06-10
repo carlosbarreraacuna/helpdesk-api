@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Area;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Configuración
+ */
 class AreaController extends Controller
 {
     /**

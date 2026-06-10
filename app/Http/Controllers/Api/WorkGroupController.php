@@ -8,6 +8,9 @@ use App\Models\User;
 use App\Models\TicketCategory;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Configuración
+ */
 class WorkGroupController extends Controller
 {
     public function index()

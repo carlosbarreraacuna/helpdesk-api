@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 class KbArticle extends Model
 {
+    use HasFactory;
     protected $table = 'kb_articles';
 
     protected $fillable = [

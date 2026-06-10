@@ -7,6 +7,9 @@ use App\Models\KbTag;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
+/**
+ * @tags Base de Conocimiento
+ */
 class KbTagController extends Controller
 {
     public function index()

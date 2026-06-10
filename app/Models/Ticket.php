@@ -22,6 +22,10 @@ class Ticket extends Model
         'assigned_to',
         'created_by',
         'sla_due_date',
+        'sla_response_due_at',
+        'sla_resolution_due_at',
+        'sla_response_met_at',
+        'sla_breach_notified_at',
         'resolved_at',
         'closed_at',
         'channel',
@@ -36,16 +40,50 @@ class Ticket extends Model
         'validation_rejected_count',
     ];
 
+    protected $appends = ['sla_status'];
+
     protected $casts = [
-        'is_read' => 'boolean',
-        'sla_due_date' => 'datetime',
-        'resolved_at' => 'datetime',
-        'closed_at' => 'datetime',
-        'validation_requested_at' => 'datetime',
-        'validation_deadline' => 'datetime',
-        'validation_approved_at' => 'datetime',
+        'is_read'                   => 'boolean',
+        'sla_due_date'              => 'datetime',
+        'sla_response_due_at'       => 'datetime',
+        'sla_resolution_due_at'     => 'datetime',
+        'sla_response_met_at'       => 'datetime',
+        'sla_breach_notified_at'    => 'datetime',
+        'resolved_at'               => 'datetime',
+        'closed_at'                 => 'datetime',
+        'validation_requested_at'   => 'datetime',
+        'validation_deadline'       => 'datetime',
+        'validation_approved_at'    => 'datetime',
         'validation_rejected_count' => 'integer',
     ];
+
+    public function getSlaStatusAttribute(): string
+    {
+        if (!$this->sla_resolution_due_at) {
+            return 'sin_sla';
+        }
+
+        if ($this->closed_at || $this->resolved_at) {
+            $resolvedAt = $this->closed_at ?? $this->resolved_at;
+            return $resolvedAt->lte($this->sla_resolution_due_at) ? 'cumplido' : 'incumplido';
+        }
+
+        if (now()->gt($this->sla_resolution_due_at)) {
+            return 'vencido';
+        }
+
+        // At-risk: used >= alert_threshold% of total time
+        $slaConfig = \App\Models\SlaConfig::forPriority($this->priority);
+        if ($slaConfig) {
+            $totalMin = $slaConfig->resolution_time_hours * 60;
+            $usedMin  = $this->created_at->diffInMinutes(now());
+            if ($totalMin > 0 && ($usedMin / $totalMin * 100) >= $slaConfig->alert_threshold) {
+                return 'en_riesgo';
+            }
+        }
+
+        return 'en_tiempo';
+    }
 
     public function status()
     {

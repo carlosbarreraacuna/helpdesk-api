@@ -13,6 +13,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // The refresh_token cookie is already httpOnly (JS can't read it) and contains
+        // high-entropy random bytes, so Laravel-level encryption is unnecessary overhead.
+        $middleware->encryptCookies(except: ['refresh_token']);
 
         /*
         |--------------------------------------------------------------------------

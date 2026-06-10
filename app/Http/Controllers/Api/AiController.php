@@ -9,6 +9,9 @@ use App\Models\KbArticle;
 use App\Models\TicketCategory;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Inteligencia Artificial
+ */
 class AiController extends Controller
 {
     public function __construct(private AiService $ai) {}

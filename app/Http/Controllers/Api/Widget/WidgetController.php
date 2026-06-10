@@ -7,6 +7,9 @@ use App\Models\WidgetChatSession;
 use App\Services\Widget\WidgetChatService;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Widget / Chat
+ */
 class WidgetController extends Controller
 {
     public function __construct(private WidgetChatService $chatService) {}

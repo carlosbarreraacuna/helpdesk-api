@@ -8,6 +8,9 @@ use App\Services\WhatsAppBotService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * @tags Canales
+ */
 class WhatsAppWebhookController extends Controller
 {
     protected $whatsapp;

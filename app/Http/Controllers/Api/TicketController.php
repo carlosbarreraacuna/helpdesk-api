@@ -19,6 +19,7 @@ use App\Events\WidgetMessageSent;
 use App\Services\EmailChannelService;
 use App\Services\WhatsAppService;
 use App\Services\TicketAssignmentService;
+use App\Services\SlaService;
 use App\Mail\TicketCreatedMail;
 use App\Mail\TicketValidationRequestMail;
 use App\Mail\TicketValidationResultMail;
@@ -26,6 +27,9 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
+/**
+ * @tags Tickets
+ */
 class TicketController extends Controller
 {
     /**
@@ -141,6 +145,9 @@ class TicketController extends Controller
             'category_id'      => $validated['category_id'] ?? null,
             'status_id'        => $newStatus->id,
         ]);
+
+        // Calculate and assign SLA due dates
+        app(SlaService::class)->calculateAndAssign($ticket);
 
         // Register in history
         TicketHistory::create([

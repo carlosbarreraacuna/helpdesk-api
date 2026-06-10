@@ -8,6 +8,9 @@ use App\Models\KbSubcategory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
+/**
+ * @tags Base de Conocimiento
+ */
 class KbCategoryController extends Controller
 {
     public function index()

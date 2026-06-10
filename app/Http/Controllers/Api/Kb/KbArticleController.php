@@ -11,6 +11,9 @@ use App\Services\Kb\KbArticleService;
 use App\Services\Kb\KbSearchService;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Base de Conocimiento
+ */
 class KbArticleController extends Controller
 {
     public function __construct(

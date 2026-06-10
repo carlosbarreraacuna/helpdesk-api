@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\TicketCategory;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Configuración
+ */
 class TicketCategoryController extends Controller
 {
     public function index()

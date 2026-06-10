@@ -9,6 +9,9 @@ use App\Models\AssetLocationLog;
 use App\Services\Assets\AssetEventService;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Inventario de Activos
+ */
 class AssetController extends Controller
 {
     public function __construct(private AssetEventService $eventService) {}

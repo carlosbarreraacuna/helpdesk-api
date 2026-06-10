@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\ServiceProvider;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Inventario de Activos
+ */
 class ServiceProviderController extends Controller
 {
     public function index()

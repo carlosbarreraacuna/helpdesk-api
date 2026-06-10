@@ -7,6 +7,9 @@ use App\Models\AssetMaintenance;
 use App\Services\Assets\AssetMaintenanceService;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Inventario de Activos
+ */
 class AssetMaintenanceController extends Controller
 {
     public function __construct(private AssetMaintenanceService $maintenanceService) {}

@@ -2,15 +2,13 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\AuthLog;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class CheckPermission
 {
-    /**
-     * Handle an incoming request.
-     */
     public function handle(Request $request, Closure $next, string $permission): Response
     {
         if (!$request->user()) {
@@ -18,9 +16,15 @@ class CheckPermission
         }
 
         if (!$request->user()->hasPermissionAccess($permission)) {
+            AuthLog::record(
+                event: 'access_denied',
+                userId: $request->user()->id,
+                requiredPermission: $permission,
+            );
+
             return response()->json([
-                'message' => 'No tienes permiso para realizar esta acción',
-                'required_permission' => $permission
+                'message'             => 'No tienes permiso para realizar esta acción',
+                'required_permission' => $permission,
             ], 403);
         }
 

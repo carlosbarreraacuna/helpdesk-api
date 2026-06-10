@@ -7,6 +7,9 @@ use App\Models\Area;
 use App\Models\Location;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Inventario de Activos
+ */
 class LocationController extends Controller
 {
     public function index()

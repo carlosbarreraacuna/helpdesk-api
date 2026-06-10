@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Module;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Configuración
+ */
 class ModuleController extends Controller
 {
     public function index()

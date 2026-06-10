@@ -8,6 +8,9 @@ use App\Services\Widget\WidgetChatService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 
+/**
+ * @tags Widget / Chat
+ */
 class ChatController extends Controller
 {
     public function __construct(private WidgetChatService $chatService) {}

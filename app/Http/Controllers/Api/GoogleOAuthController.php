@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Services\GoogleCalendarService;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Canales
+ */
 class GoogleOAuthController extends Controller
 {
     public function __construct(private GoogleCalendarService $google) {}

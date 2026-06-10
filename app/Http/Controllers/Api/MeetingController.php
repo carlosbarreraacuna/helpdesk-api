@@ -11,6 +11,9 @@ use App\Models\TicketHistory;
 use App\Services\GoogleCalendarService;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Reuniones Remotas
+ */
 class MeetingController extends Controller
 {
     public function __construct(private GoogleCalendarService $google) {}

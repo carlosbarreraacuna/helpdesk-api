@@ -8,6 +8,9 @@ use App\Models\EmailMessage;
 use App\Services\EmailChannelService;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Canales
+ */
 class EmailChannelController extends Controller
 {
     public function __construct(private EmailChannelService $service) {}
@@ -39,15 +42,15 @@ class EmailChannelController extends Controller
     public function update(Request $request, EmailChannel $emailChannel)
     {
         $validated = $request->validate([
-            'name'             => 'string|max:100',
-            'email'            => 'email',
+            'name'             => 'nullable|string|max:100',
+            'email'            => 'nullable|email',
             'display_name'     => 'nullable|string',
-            'imap_host'        => 'string',
-            'imap_port'        => 'integer|min:1',
-            'imap_encryption'  => 'in:ssl,tls,notls',
-            'imap_username'    => 'string',
+            'imap_host'        => 'nullable|string',
+            'imap_port'        => 'nullable|integer|min:1',
+            'imap_encryption'  => 'nullable|in:ssl,tls,notls',
+            'imap_username'    => 'nullable|string',
             'imap_password'    => 'nullable|string',
-            'imap_folder'      => 'string',
+            'imap_folder'      => 'nullable|string',
             'is_active'        => 'boolean',
         ]);
 

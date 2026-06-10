@@ -8,6 +8,9 @@ use App\Models\Role;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * @tags Reportes
+ */
 class ReportTemplateController extends Controller
 {
     public function index()

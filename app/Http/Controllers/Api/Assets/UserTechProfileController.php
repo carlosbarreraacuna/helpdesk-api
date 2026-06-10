@@ -9,6 +9,9 @@ use App\Models\User;
 use App\Models\UserSoftwareAssignment;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Inventario de Activos
+ */
 class UserTechProfileController extends Controller
 {
     public function profile(Request $request, int $userId)

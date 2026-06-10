@@ -11,6 +11,9 @@ use App\Models\UserPermission;
 use App\Models\PermissionChangeLog;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Roles y Permisos
+ */
 class PermissionController extends Controller
 {
     // Listar todos los permisos agrupados por módulo

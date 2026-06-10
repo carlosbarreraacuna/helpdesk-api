@@ -32,6 +32,7 @@ use App\Http\Controllers\Api\GoogleOAuthController;
 use App\Http\Controllers\Api\TicketCategoryController;
 use App\Http\Controllers\Api\WorkGroupController;
 use App\Http\Controllers\Api\AiController;
+use App\Http\Controllers\Api\SlaController;
 
 /*
 |--------------------------------------------------------------------------
@@ -78,10 +79,16 @@ Route::get('/portal/kb/suggest', [KbArticleController::class, 'suggest']);
 Route::get('/widget/kb/search', [WidgetController::class, 'kbSearch']);
 
 // Authentication routes
-Route::post('/auth/login', [AuthController::class, 'login']);
+// Rate limit: max 5 login attempts per minute per IP → locked 15 min
+Route::post('/auth/login', [AuthController::class, 'login'])
+    ->middleware('throttle:5,1');
 
-// Protected routes
-Route::middleware('auth:sanctum')->group(function () {
+// Refresh token endpoint — uses httpOnly cookie, no Bearer token required
+Route::post('/auth/refresh', [AuthController::class, 'refresh'])
+    ->middleware('throttle:10,1');
+
+// Protected routes — 60 requests per minute per authenticated user
+Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
@@ -275,6 +282,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/audit/permissions', [AuditController::class, 'permissionLogs']);
     Route::get('/audit/permissions/users/{userId}', [AuditController::class, 'userPermissionLogs']);
     Route::get('/audit/permissions/roles/{roleId}', [AuditController::class, 'rolePermissionLogs']);
+    Route::get('/audit/auth', [AuditController::class, 'authLogs'])
+        ->middleware('permission:settings.update');
+    Route::get('/audit/auth/summary', [AuditController::class, 'authLogsSummary'])
+        ->middleware('permission:settings.update');
+
+    // ─── SLA ────────────────────────────────────────────────────────────────
+    Route::get('/sla/configs', [SlaController::class, 'index']);
+    Route::get('/sla/dashboard', [SlaController::class, 'dashboard']);
+    Route::patch('/sla/configs/{id}', [SlaController::class, 'update'])
+        ->middleware('permission:settings.update');
 
     // ─── BASE DE CONOCIMIENTO ───────────────────────────────────────────────
 

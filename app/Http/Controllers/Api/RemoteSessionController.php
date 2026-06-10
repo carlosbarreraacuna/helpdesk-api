@@ -8,6 +8,9 @@ use App\Models\TicketHistory;
 use App\Models\Ticket;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Reuniones Remotas
+ */
 class RemoteSessionController extends Controller
 {
     public function index($ticketId)

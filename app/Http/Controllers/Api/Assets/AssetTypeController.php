@@ -7,6 +7,9 @@ use App\Models\AssetType;
 use App\Models\AssetTypeField;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Inventario de Activos
+ */
 class AssetTypeController extends Controller
 {
     public function index()

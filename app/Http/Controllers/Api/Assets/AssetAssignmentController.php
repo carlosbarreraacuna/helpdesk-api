@@ -7,6 +7,9 @@ use App\Models\Asset;
 use App\Services\Assets\AssetAssignmentService;
 use Illuminate\Http\Request;
 
+/**
+ * @tags Inventario de Activos
+ */
 class AssetAssignmentController extends Controller
 {
     public function __construct(private AssetAssignmentService $assignmentService) {}

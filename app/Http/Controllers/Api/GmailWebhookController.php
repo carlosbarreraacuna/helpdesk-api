@@ -9,6 +9,9 @@ use App\Services\GmailPushService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * @tags Canales
+ */
 class GmailWebhookController extends Controller
 {
     /**
