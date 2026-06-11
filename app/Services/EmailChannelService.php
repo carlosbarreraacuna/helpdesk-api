@@ -21,6 +21,16 @@ class EmailChannelService
         ?\DateTimeInterface $since = null,
         int $limit = 50
     ): int {
+        if ($channel->use_gmail_api) {
+            Log::info('EmailChannelService: Gmail channels use Pub/Sub push — manual poll skipped.', ['channel' => $channel->id]);
+            return 0;
+        }
+
+        if (!$channel->imap_host) {
+            Log::error('EmailChannelService: imap_host not configured.', ['channel' => $channel->id]);
+            return 0;
+        }
+
         $since ??= new \DateTime('today');
 
         $imap = new ImapSocketClient($channel->imap_host, $channel->imap_port, $channel->imap_encryption);
