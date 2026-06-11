@@ -26,19 +26,18 @@ class EmailChannelService
             return 0;
         }
 
-        if (!$channel->imap_host) {
-            Log::error('EmailChannelService: imap_host not configured.', ['channel' => $channel->id]);
+        if (!$channel->imap_host || !$channel->imap_port || !$channel->imap_username) {
+            Log::error('EmailChannelService: IMAP not fully configured.', ['channel' => $channel->id]);
             return 0;
         }
 
         $since ??= new \DateTime('today');
 
-        $imap = new ImapSocketClient($channel->imap_host, $channel->imap_port, $channel->imap_encryption);
-
         try {
+            $imap = new ImapSocketClient($channel->imap_host, (int) $channel->imap_port, $channel->imap_encryption ?? 'ssl');
             $imap->connect();
             $imap->login($channel->imap_username, $channel->imap_password);
-            $imap->selectFolder($channel->imap_folder);
+            $imap->selectFolder($channel->imap_folder ?? 'INBOX');
         } catch (\Throwable $e) {
             Log::error('EmailChannelService: connection failed', [
                 'channel' => $channel->id,
@@ -484,16 +483,15 @@ class EmailChannelService
             return $this->testGmailConnection($channel);
         }
 
-        if (!$channel->imap_host) {
-            return ['success' => false, 'message' => 'Host IMAP no configurado.'];
+        if (!$channel->imap_host || !$channel->imap_port || !$channel->imap_username) {
+            return ['success' => false, 'message' => 'Faltan datos IMAP: host, puerto o usuario no configurados.'];
         }
 
-        $imap = new ImapSocketClient($channel->imap_host, $channel->imap_port, $channel->imap_encryption);
-
         try {
+            $imap = new ImapSocketClient($channel->imap_host, (int) $channel->imap_port, $channel->imap_encryption ?? 'ssl');
             $imap->connect();
             $imap->login($channel->imap_username, $channel->imap_password);
-            $total = $imap->selectFolder($channel->imap_folder);
+            $total = $imap->selectFolder($channel->imap_folder ?? 'INBOX');
             $imap->disconnect();
 
             return ['success' => true, 'message' => "Conexión exitosa. {$total} mensajes en la bandeja."];
