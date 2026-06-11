@@ -89,30 +89,38 @@ class GmailWebhookController extends Controller
     /**
      * OAuth2 callback — exchanges code for tokens, then starts watch().
      */
-    public function oauthCallback(Request $request): \Illuminate\Http\JsonResponse
+    public function oauthCallback(Request $request): \Illuminate\Http\RedirectResponse
     {
         $code      = $request->query('code');
         $channelId = $request->query('state');
 
+        $frontendUrl  = rtrim(config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:3000')), '/');
+        $redirectBase = $frontendUrl . '/admin/email-channels';
+
         if (!$code || !$channelId) {
-            return response()->json(['error' => 'Missing code or session'], 400);
+            return redirect($redirectBase . '?gmail=error&msg=' . urlencode('Parámetros incompletos en el callback OAuth.'));
         }
 
-        $channel     = EmailChannel::findOrFail($channelId);
+        $channel = EmailChannel::find($channelId);
+        if (!$channel) {
+            return redirect($redirectBase . '?gmail=error&msg=' . urlencode('Canal no encontrado.'));
+        }
+
         $redirectUri = route('gmail.oauth.callback');
 
         try {
             GmailPushService::exchangeCode($channel, $code, $redirectUri);
-
-            // Start watch immediately after authorization
-            $service = new GmailPushService($channel);
-            $service->startWatch();
-
             $channel->update(['use_gmail_api' => true]);
 
-            return response()->json(['success' => true, 'message' => 'Gmail API activado correctamente.']);
+            if ($channel->gmail_pubsub_topic) {
+                $service = new GmailPushService($channel);
+                $service->startWatch();
+            }
+
+            return redirect($redirectBase . '?gmail=connected&channel=' . $channelId);
         } catch (\Throwable $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
+            Log::error('Gmail OAuth callback failed', ['error' => $e->getMessage()]);
+            return redirect($redirectBase . '?gmail=error&msg=' . urlencode($e->getMessage()));
         }
     }
 }

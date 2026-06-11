@@ -24,17 +24,24 @@ class EmailChannelController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name'             => 'required|string|max:100',
-            'email'            => 'required|email',
-            'display_name'     => 'nullable|string|max:100',
-            'imap_host'        => 'required|string',
-            'imap_port'        => 'integer|min:1|max:65535',
-            'imap_encryption'  => 'in:ssl,tls,notls',
-            'imap_username'    => 'required|string',
-            'imap_password'    => 'required|string',
-            'imap_folder'      => 'string',
+            'name'                => 'required|string|max:100',
+            'email'               => 'required|email',
+            'display_name'        => 'nullable|string|max:100',
+            'channel_type'        => 'nullable|in:imap,gmail',
+            // IMAP fields
+            'imap_host'           => 'nullable|string',
+            'imap_port'           => 'nullable|integer|min:1|max:65535',
+            'imap_encryption'     => 'nullable|in:ssl,tls,notls',
+            'imap_username'       => 'nullable|string',
+            'imap_password'       => 'nullable|string',
+            'imap_folder'         => 'nullable|string',
+            // Gmail API fields
+            'gmail_client_id'     => 'nullable|string',
+            'gmail_client_secret' => 'nullable|string',
+            'gmail_pubsub_topic'  => 'nullable|string',
         ]);
 
+        unset($validated['channel_type']);
         $channel = EmailChannel::create($validated);
         return response()->json($channel, 201);
     }
@@ -42,20 +49,31 @@ class EmailChannelController extends Controller
     public function update(Request $request, EmailChannel $emailChannel)
     {
         $validated = $request->validate([
-            'name'             => 'nullable|string|max:100',
-            'email'            => 'nullable|email',
-            'display_name'     => 'nullable|string',
-            'imap_host'        => 'nullable|string',
-            'imap_port'        => 'nullable|integer|min:1',
-            'imap_encryption'  => 'nullable|in:ssl,tls,notls',
-            'imap_username'    => 'nullable|string',
-            'imap_password'    => 'nullable|string',
-            'imap_folder'      => 'nullable|string',
-            'is_active'        => 'boolean',
+            'name'                => 'nullable|string|max:100',
+            'email'               => 'nullable|email',
+            'display_name'        => 'nullable|string',
+            'channel_type'        => 'nullable|in:imap,gmail',
+            // IMAP fields
+            'imap_host'           => 'nullable|string',
+            'imap_port'           => 'nullable|integer|min:1',
+            'imap_encryption'     => 'nullable|in:ssl,tls,notls',
+            'imap_username'       => 'nullable|string',
+            'imap_password'       => 'nullable|string',
+            'imap_folder'         => 'nullable|string',
+            'is_active'           => 'boolean',
+            // Gmail API fields
+            'gmail_client_id'     => 'nullable|string',
+            'gmail_client_secret' => 'nullable|string',
+            'gmail_pubsub_topic'  => 'nullable|string',
         ]);
 
-        if (empty($validated['imap_password'])) {
+        unset($validated['channel_type']);
+
+        if (array_key_exists('imap_password', $validated) && empty($validated['imap_password'])) {
             unset($validated['imap_password']);
+        }
+        if (array_key_exists('gmail_client_secret', $validated) && empty($validated['gmail_client_secret'])) {
+            unset($validated['gmail_client_secret']);
         }
 
         $emailChannel->update($validated);
