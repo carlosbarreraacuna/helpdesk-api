@@ -470,6 +470,14 @@ class EmailChannelService
 
     public function testConnection(EmailChannel $channel): array
     {
+        if ($channel->use_gmail_api) {
+            return $this->testGmailConnection($channel);
+        }
+
+        if (!$channel->imap_host) {
+            return ['success' => false, 'message' => 'Host IMAP no configurado.'];
+        }
+
         $imap = new ImapSocketClient($channel->imap_host, $channel->imap_port, $channel->imap_encryption);
 
         try {
@@ -481,6 +489,31 @@ class EmailChannelService
             return ['success' => true, 'message' => "Conexión exitosa. {$total} mensajes en la bandeja."];
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    private function testGmailConnection(EmailChannel $channel): array
+    {
+        if (!$channel->gmail_access_token) {
+            return ['success' => false, 'message' => 'Canal Gmail no autorizado. Completa el flujo OAuth primero.'];
+        }
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::withToken($channel->gmail_access_token)
+                ->get('https://gmail.googleapis.com/gmail/v1/users/me/profile');
+
+            if ($response->status() === 401) {
+                return ['success' => false, 'message' => 'Token de Gmail expirado. Vuelve a autorizar el canal.'];
+            }
+
+            if (!$response->successful()) {
+                return ['success' => false, 'message' => 'Error al conectar con Gmail: ' . $response->body()];
+            }
+
+            $email = $response->json('emailAddress', $channel->email);
+            return ['success' => true, 'message' => "Conexión Gmail exitosa. Cuenta: {$email}"];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => 'Error de conexión: ' . $e->getMessage()];
         }
     }
 

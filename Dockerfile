@@ -54,11 +54,12 @@ RUN chown -R www-data:www-data /app/storage /app/bootstrap/cache \
     && chmod -R 775 /app/storage /app/bootstrap/cache
 
 # PHP configuration for production
-COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/opcache.ini
+COPY docker/php/opcache.ini    /usr/local/etc/php/conf.d/opcache.ini
 COPY docker/php/production.ini /usr/local/etc/php/conf.d/production.ini
+COPY docker/php/fpm-pool.conf  /usr/local/etc/php-fpm.d/www.conf
 
 # Nginx + supervisor configuration
-COPY docker/nginx/nginx.conf   /etc/nginx/nginx.conf.template
+COPY docker/nginx/nginx.conf        /etc/nginx/nginx.conf.template
 COPY docker/supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 EXPOSE ${PORT:-8000}
