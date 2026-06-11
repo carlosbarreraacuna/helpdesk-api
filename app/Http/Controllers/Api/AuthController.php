@@ -54,9 +54,9 @@ class AuthController extends Controller
             value: $refresh->token,
             minutes: 60 * 24 * 7,
             path: '/api/auth',
-            secure: app()->isProduction(),
+            secure: true,
             httpOnly: true,
-            sameSite: 'Strict',
+            sameSite: 'None',
         );
 
         return response()->json([
@@ -102,9 +102,9 @@ class AuthController extends Controller
             value: $newRefresh->token,
             minutes: 60 * 24 * 7,
             path: '/api/auth',
-            secure: app()->isProduction(),
+            secure: true,
             httpOnly: true,
-            sameSite: 'Strict',
+            sameSite: 'None',
         );
 
         return response()->json([
