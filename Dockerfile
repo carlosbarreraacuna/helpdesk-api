@@ -1,6 +1,6 @@
 FROM php:8.3-fpm-alpine
 
-# Install system dependencies
+# Install system dependencies + nginx + supervisor
 RUN apk add --no-cache \
     bash \
     git \
@@ -12,6 +12,8 @@ RUN apk add --no-cache \
     oniguruma-dev \
     postgresql-dev \
     icu-dev \
+    nginx \
+    supervisor \
     $PHPIZE_DEPS
 
 # Install PHP extensions
@@ -55,6 +57,19 @@ RUN chown -R www-data:www-data /app/storage /app/bootstrap/cache \
 COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/opcache.ini
 COPY docker/php/production.ini /usr/local/etc/php/conf.d/production.ini
 
+# Nginx + supervisor configuration
+COPY docker/nginx/nginx.conf   /etc/nginx/nginx.conf.template
+COPY docker/supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
 EXPOSE ${PORT:-8000}
 
-CMD ["sh", "-c", "php artisan migrate --force && php artisan config:cache && php artisan route:cache && php artisan storage:link && php artisan serve --host=0.0.0.0 --port=${PORT:-8000}"]
+# startup.sh: injects $PORT into nginx config, then runs migrations and supervisor
+CMD ["sh", "-c", "\
+    export NGINX_PORT=${PORT:-8000} && \
+    sed \"s/NGINX_PORT/$NGINX_PORT/g\" /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && \
+    php artisan migrate --force && \
+    php artisan config:cache && \
+    php artisan route:cache && \
+    php artisan storage:link && \
+    exec supervisord -c /etc/supervisor/conf.d/supervisord.conf \
+"]
