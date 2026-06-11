@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\WidgetChatSession;
 use App\Policies\WidgetChatSessionPolicy;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -13,6 +14,10 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        if (config('app.env') === 'production') {
+            URL::forceScheme('https');
+        }
+
         Gate::policy(WidgetChatSession::class, WidgetChatSessionPolicy::class);
 
         // Allow docs access only to users with settings.update permission
