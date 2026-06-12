@@ -404,7 +404,12 @@ class EmailChannelService
 
             return true;
         } catch (\Exception $e) {
-            Log::error('EmailChannelService: sendReply failed', ['error' => $e->getMessage()]);
+            Log::error('EmailChannelService: sendReply failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'mailer' => config('mail.default'),
+                'resend_key_set' => !empty(config('services.resend.key')),
+            ]);
             return false;
         }
     }
