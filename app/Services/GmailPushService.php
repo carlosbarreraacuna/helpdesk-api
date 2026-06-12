@@ -26,31 +26,24 @@ class GmailPushService
      * Call gmail.watch() to start / renew push notifications.
      * Must be called once and re-called every ~7 days.
      */
-    public function startWatch(): bool
+    public function startWatch(): void
     {
-        try {
-            $gmail     = new Gmail($this->client);
-            $watchReq  = new WatchRequest();
-            $watchReq->setTopicName($this->channel->gmail_pubsub_topic);
-            $watchReq->setLabelIds(['INBOX']);
+        $gmail     = new Gmail($this->client);
+        $watchReq  = new WatchRequest();
+        $watchReq->setTopicName($this->channel->gmail_pubsub_topic);
+        $watchReq->setLabelIds(['INBOX']);
 
-            $response = $gmail->users->watch('me', $watchReq);
+        $response = $gmail->users->watch('me', $watchReq);
 
-            $this->channel->update([
-                'gmail_history_id' => $response->getHistoryId(),
-            ]);
+        $this->channel->update([
+            'gmail_history_id' => $response->getHistoryId(),
+        ]);
 
-            Log::info('Gmail watch started', [
-                'channel'    => $this->channel->id,
-                'history_id' => $response->getHistoryId(),
-                'expiration' => $response->getExpiration(),
-            ]);
-
-            return true;
-        } catch (\Throwable $e) {
-            Log::error('Gmail watch failed', ['error' => $e->getMessage()]);
-            return false;
-        }
+        Log::info('Gmail watch started', [
+            'channel'    => $this->channel->id,
+            'history_id' => $response->getHistoryId(),
+            'expiration' => $response->getExpiration(),
+        ]);
     }
 
     /**

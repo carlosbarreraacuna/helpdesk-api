@@ -114,8 +114,7 @@ class GmailWebhookController extends Controller
             $channel->update(['use_gmail_api' => true]);
 
             if ($channel->gmail_pubsub_topic) {
-                $service = new GmailPushService($channel);
-                $service->startWatch();
+                (new GmailPushService($channel))->startWatch();
             }
 
             return redirect($redirectBase . '?gmail=connected&channel=' . $channelId);

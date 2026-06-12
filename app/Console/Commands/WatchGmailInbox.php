@@ -30,8 +30,8 @@ class WatchGmailInbox extends Command
             $this->info("Watching channel [{$channel->id}] {$channel->email}...");
             try {
                 $service = new GmailPushService($channel);
-                $ok      = $service->startWatch();
-                $this->info($ok ? '  ✓ Watch started.' : '  ✗ Watch failed.');
+                $service->startWatch();
+                $this->info('  ✓ Watch started.');
             } catch (\Throwable $e) {
                 $this->error("  Error: {$e->getMessage()}");
             }
