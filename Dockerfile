@@ -46,8 +46,8 @@ RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
 # Copy application files
 COPY . .
 
-# Complete autoloader
-RUN composer dump-autoload --optimize --no-dev
+# Complete autoloader (--no-scripts evita que package:discover intente conectar a DB en build time)
+RUN composer dump-autoload --optimize --no-dev --no-scripts
 
 # Set permissions
 RUN chown -R www-data:www-data /app/storage /app/bootstrap/cache \
@@ -68,6 +68,7 @@ EXPOSE ${PORT:-8000}
 CMD ["sh", "-c", "\
     export NGINX_PORT=${PORT:-8000} && \
     sed \"s/NGINX_PORT/$NGINX_PORT/g\" /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && \
+    php artisan package:discover --ansi && \
     php artisan migrate --force && \
     php artisan config:cache && \
     php artisan route:cache && \
