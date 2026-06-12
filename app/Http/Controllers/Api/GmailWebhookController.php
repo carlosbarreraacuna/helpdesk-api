@@ -52,6 +52,9 @@ class GmailWebhookController extends Controller
             return response()->json(['status' => 'ok']);
         }
 
+        // Track when the last push was received so the UI stays accurate
+        $channel->update(['last_polled_at' => now()]);
+
         try {
             $gmailService   = new GmailPushService($channel);
             $newMessages    = $gmailService->fetchNewMessages($historyId);
@@ -59,15 +62,13 @@ class GmailWebhookController extends Controller
             $processed      = 0;
 
             foreach ($newMessages as $msg) {
-                // Simulate the IMAP fetch response format expected by processRawMessage
-                // The raw message is already the RFC 2822 content (not wrapped in IMAP literal)
                 $result = $emailService->processRawEmailDirectly($msg['raw'], $msg['id'], $channel);
                 if ($result) $processed++;
             }
 
             Log::info('Gmail push processed', ['processed' => $processed, 'total' => count($newMessages)]);
         } catch (\Throwable $e) {
-            Log::error('Gmail push processing failed', ['error' => $e->getMessage()]);
+            Log::error('Gmail push processing failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             // Still return 200 to avoid Pub/Sub retry storm
         }
 

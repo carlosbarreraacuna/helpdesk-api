@@ -61,7 +61,19 @@ class GmailPushService
     {
         $lastHistoryId = $this->channel->gmail_history_id;
 
+        Log::info('Gmail fetchNewMessages', [
+            'channel'       => $this->channel->id,
+            'lastHistoryId' => $lastHistoryId,
+            'newHistoryId'  => $newHistoryId,
+        ]);
+
         if (!$lastHistoryId) {
+            // No baseline stored — can't diff history. Save current ID and skip this batch.
+            // Re-run gmail:watch to get a fresh baseline and process future emails.
+            Log::warning('Gmail fetchNewMessages: no lastHistoryId stored — skipping batch and saving baseline', [
+                'channel'      => $this->channel->id,
+                'newHistoryId' => $newHistoryId,
+            ]);
             $this->channel->update(['gmail_history_id' => $newHistoryId]);
             return [];
         }
@@ -83,6 +95,11 @@ class GmailPushService
 
             // Deduplicate
             $messageIds = array_unique($messageIds);
+
+            Log::info('Gmail history fetched', [
+                'channel'    => $this->channel->id,
+                'messageIds' => $messageIds,
+            ]);
 
             $rawMessages = [];
             foreach ($messageIds as $id) {
@@ -131,7 +148,12 @@ class GmailPushService
             if (!$this->channel->gmail_refresh_token) {
                 throw new \RuntimeException('No Gmail refresh token stored. Re-authorize the channel.');
             }
-            $this->client->fetchAccessTokenWithRefreshToken($this->channel->gmail_refresh_token);
+            $refreshed = $this->client->fetchAccessTokenWithRefreshToken($this->channel->gmail_refresh_token);
+            if (isset($refreshed['error'])) {
+                throw new \RuntimeException(
+                    'Gmail token refresh failed: ' . ($refreshed['error_description'] ?? $refreshed['error'])
+                );
+            }
             $newToken = $this->client->getAccessToken();
             $this->channel->update(['gmail_access_token' => json_encode($newToken)]);
         }
