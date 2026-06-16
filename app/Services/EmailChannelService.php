@@ -73,12 +73,16 @@ class EmailChannelService
         $references = trim($this->extractHeader($headers, 'References') ?? '', '<> ');
         $ccRaw      = $this->extractHeader($headers, 'Cc') ?? '';
 
-        $ownAddresses = array_filter([
-            strtolower($channel->email ?? ''),
-            strtolower(config('mail.from.address', '')),
-        ]);
-        if (in_array(strtolower($fromEmail), $ownAddresses, true)) {
+        // Skip emails we sent ourselves (marked with custom header, works regardless of sender/recipient address)
+        $outboundHeader = $this->extractHeader($headers, 'X-HelpDesk-Outbound');
+        if ($outboundHeader === 'true') {
             Log::info('EmailChannel: skipping own outbound email', ['from' => $fromEmail]);
+            return false;
+        }
+
+        // Fallback: also skip if from address matches the channel inbox (loop prevention)
+        if (strtolower($fromEmail) === strtolower($channel->email ?? '')) {
+            Log::info('EmailChannel: skipping loop email from channel address', ['from' => $fromEmail]);
             return false;
         }
 
@@ -375,6 +379,8 @@ class EmailChannelService
             $mailable = new TicketReplyMail($ticket, $replyBody, $agentName, $channel);
 
             Mail::to($to)->send($mailable->withSymfonyMessage(function ($message) use ($originalMessageId, $attachments) {
+                // Mark as outbound so the Gmail webhook ignores it regardless of sender address
+                $message->getHeaders()->addTextHeader('X-HelpDesk-Outbound', 'true');
                 if ($originalMessageId) {
                     $message->getHeaders()->addTextHeader('In-Reply-To', $originalMessageId);
                     $message->getHeaders()->addTextHeader('References', $originalMessageId);
