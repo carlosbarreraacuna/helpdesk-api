@@ -550,15 +550,26 @@ class EmailChannelService
     private function findExistingTicket(string $inReplyTo, string $references, string $subject, string $fromEmail): ?Ticket
     {
         foreach ([$inReplyTo, $references] as $ref) {
-            if ($ref) {
-                $t = Ticket::where('channel_ref', $ref)->first();
+            if (!$ref) continue;
+
+            // Match against original inbound email (tickets created via email channel)
+            $t = Ticket::where('channel_ref', $ref)->first();
+            if ($t) return $t;
+
+            // Match against any outbound reply from this helpdesk
+            $emailMsg = EmailMessage::where('message_id', $ref)->first();
+            if ($emailMsg) {
+                $t = Ticket::find($emailMsg->ticket_id);
                 if ($t) return $t;
             }
         }
+
+        // Fallback: ticket number in subject line (e.g. Re: [TKT-2026-0016] ...)
         if (preg_match('/TKT-\d{4}-\d{4}/', $subject, $m)) {
             $t = Ticket::where('ticket_number', $m[0])->first();
             if ($t) return $t;
         }
+
         return null;
     }
 }
