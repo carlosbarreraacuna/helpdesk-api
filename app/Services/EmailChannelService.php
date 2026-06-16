@@ -586,8 +586,9 @@ class EmailChannelService
      */
     private function stripQuotedReply(string $text): string
     {
-        $lines  = preg_split('/\r?\n/', $text);
-        $output = [];
+        $lines   = preg_split('/\r?\n/', $text);
+        $output  = [];
+        $prevWasOnHeader = false;
 
         foreach ($lines as $line) {
             $trimmed = ltrim($line);
@@ -595,13 +596,25 @@ class EmailChannelService
             // Stop at quoted block marker (lines starting with ">")
             if (str_starts_with($trimmed, '>')) break;
 
-            // Stop at "On DATE, NAME <email> wrote:" (Gmail / Outlook quote header)
-            if (preg_match('/^On .{5,120} wrote:\s*$/u', $trimmed)) break;
-            if (preg_match('/^El .{5,120} escribió:\s*$/u', $trimmed)) break;
+            // Stop at "On DATE, NAME <email> wrote:" — single line version
+            if (preg_match('/^On .{5,200} wrote:\s*$/u', $trimmed)) break;
+            if (preg_match('/^El .{5,200} escribió:\s*$/u', $trimmed)) break;
+
+            // Stop at multi-line Gmail quote header:
+            // Line 1: "On Tue, Jun 16, 2026 at 3:43 PM HelpDesk <email>"
+            // Line 2: "wrote:"
+            if (preg_match('/^wrote:\s*$/i', $trimmed) && $prevWasOnHeader) break;
+            if (preg_match('/^escribió:\s*$/i', $trimmed) && $prevWasOnHeader) break;
+
+            // Detect start of multi-line "On DATE ... <email>" header
+            $prevWasOnHeader = (bool) preg_match('/^(On|El)\s+\w+,?\s+\w+\s+\d+/u', $trimmed);
 
             // Stop at common signature delimiters
             if (preg_match('/^--\s*$/', $line)) break;
             if (str_starts_with($trimmed, '________________________________')) break;
+
+            // If this line is the "On ..." header start, don't include it
+            if ($prevWasOnHeader) break;
 
             $output[] = $line;
         }
