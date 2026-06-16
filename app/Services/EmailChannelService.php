@@ -366,9 +366,17 @@ class EmailChannelService
         try {
             $to = $ticket->requester_email;
 
-            $originalMessageId = $ticket->channel_ref
-                ? '<' . $ticket->channel_ref . '>'
-                : null;
+            // For email-channel tickets use the original inbound Message-ID.
+            // For portal tickets, thread with the last outbound email so Gmail puts it in inbox.
+            if ($ticket->channel_ref) {
+                $originalMessageId = '<' . $ticket->channel_ref . '>';
+            } else {
+                $lastOutbound = EmailMessage::where('ticket_id', $ticket->id)
+                    ->where('direction', 'outbound')
+                    ->orderByDesc('id')
+                    ->value('message_id');
+                $originalMessageId = $lastOutbound ? '<' . $lastOutbound . '>' : null;
+            }
 
             $agentName = $agentId
                 ? (User::find($agentId)?->name ?? 'Agente de soporte')
