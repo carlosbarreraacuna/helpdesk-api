@@ -386,9 +386,15 @@ class EmailChannelService
 
             $mailable = new TicketReplyMail($ticket, $replyBody, $agentName, $channel);
 
-            Mail::to($to)->send($mailable->withSymfonyMessage(function ($message) use ($originalMessageId, $attachments) {
+            // Reply-To points to the Gmail channel so user replies route back to the helpdesk
+            $activeChannel = EmailChannel::where('is_active', true)->first();
+            $replyToEmail  = $activeChannel?->email ?? config('mail.from.address');
+
+            Mail::to($to)->send($mailable->withSymfonyMessage(function ($message) use ($originalMessageId, $attachments, $replyToEmail) {
                 // Mark as outbound so the Gmail webhook ignores it regardless of sender address
                 $message->getHeaders()->addTextHeader('X-HelpDesk-Outbound', 'true');
+                // Route user replies back to the monitored Gmail inbox
+                $message->replyTo($replyToEmail);
                 if ($originalMessageId) {
                     $message->getHeaders()->addTextHeader('In-Reply-To', $originalMessageId);
                     $message->getHeaders()->addTextHeader('References', $originalMessageId);
