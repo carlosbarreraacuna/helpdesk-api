@@ -99,6 +99,23 @@ class TicketController extends Controller
         $results = $query->orderByDesc('created_at')->paginate($perPage);
         \Log::info('Resultados de la consulta:', ['total' => $results->total(), 'per_page' => $results->perPage()]);
 
+        // For portal users, append latest agent comment timestamp to detect unread replies
+        if ($user->role->name === 'usuario') {
+            $ticketIds = $results->pluck('id');
+            $agentUserIds = User::whereHas('role', fn($q) => $q->whereIn('name', ['agente', 'supervisor', 'admin']))->pluck('id');
+            $latestComments = TicketComment::whereIn('ticket_id', $ticketIds)
+                ->where('is_internal', false)
+                ->whereIn('user_id', $agentUserIds)
+                ->selectRaw('ticket_id, MAX(created_at) as latest_at')
+                ->groupBy('ticket_id')
+                ->pluck('latest_at', 'ticket_id');
+
+            $results->getCollection()->transform(function ($ticket) use ($latestComments) {
+                $ticket->latest_agent_comment_at = $latestComments[$ticket->id] ?? null;
+                return $ticket;
+            });
+        }
+
         return response()->json($results);
     }
 
