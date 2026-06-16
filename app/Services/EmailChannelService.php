@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Mail\TicketReplyMail;
 use App\Models\EmailChannel;
 use App\Models\EmailMessage;
 use App\Models\Ticket;
@@ -9,6 +10,7 @@ use App\Models\TicketComment;
 use App\Models\TicketCommentAttachment;
 use App\Models\TicketHistory;
 use App\Models\TicketStatus;
+use App\Models\User;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -355,7 +357,7 @@ class EmailChannelService
     /**
      * @param  \App\Models\TicketCommentAttachment[]|\Illuminate\Database\Eloquent\Collection  $attachments
      */
-    public function sendReply(Ticket $ticket, string $replyBody, ?int $agentId = null, $attachments = []): bool
+    public function sendReply(Ticket $ticket, string $replyBody, ?int $agentId = null, $attachments = [], string $channel = 'email'): bool
     {
         try {
             $to = $ticket->requester_email;
@@ -364,17 +366,15 @@ class EmailChannelService
                 ? '<' . $ticket->channel_ref . '>'
                 : null;
 
-            $originalEmail = EmailMessage::where('ticket_id', $ticket->id)
-                ->where('direction', 'inbound')
-                ->orderBy('id')
-                ->first();
+            $agentName = $agentId
+                ? (User::find($agentId)?->name ?? 'Agente de soporte')
+                : 'Agente de soporte';
 
-            $subject = $originalEmail
-                ? (str_starts_with($originalEmail->subject, 'Re:') ? $originalEmail->subject : 'Re: ' . $originalEmail->subject)
-                : 'Re: [' . $ticket->ticket_number . '] ' . mb_substr($ticket->description, 0, 60);
+            $ticket->load(['status', 'category']);
 
-            Mail::raw($replyBody, function (Message $message) use ($to, $subject, $originalMessageId, $attachments) {
-                $message->to($to)->subject($subject);
+            $mailable = new TicketReplyMail($ticket, $replyBody, $agentName, $channel);
+
+            Mail::to($to)->send($mailable->withSymfonyMessage(function ($message) use ($originalMessageId, $attachments) {
                 if ($originalMessageId) {
                     $message->getHeaders()->addTextHeader('In-Reply-To', $originalMessageId);
                     $message->getHeaders()->addTextHeader('References', $originalMessageId);
@@ -382,20 +382,17 @@ class EmailChannelService
                 foreach ($attachments as $att) {
                     $fullPath = Storage::disk('public')->path($att->path);
                     if (file_exists($fullPath)) {
-                        $message->attach($fullPath, [
-                            'as'   => $att->name,
-                            'mime' => $att->mime ?? mime_content_type($fullPath),
-                        ]);
+                        $message->attachFromPath($fullPath, $att->name, ['type' => $att->mime ?? mime_content_type($fullPath)]);
                     }
                 }
-            });
+            }));
 
             EmailMessage::create([
                 'ticket_id'  => $ticket->id,
                 'message_id' => 'reply-' . $ticket->ticket_number . '-' . time() . '@helpdesk',
                 'from_email' => config('mail.from.address'),
                 'from_name'  => config('mail.from.name'),
-                'subject'    => $subject,
+                'subject'    => 'Re: [' . $ticket->ticket_number . '] ' . mb_substr($ticket->description, 0, 60),
                 'body_text'  => $replyBody,
                 'direction'  => 'outbound',
                 'status'     => 'sent',

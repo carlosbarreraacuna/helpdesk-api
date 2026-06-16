@@ -636,8 +636,9 @@ class TicketController extends Controller
 
         switch ($channel) {
             case 'email':
+            case 'portal':
                 $emailService = app(EmailChannelService::class);
-                $sent = $emailService->sendReply($ticket, $message, $user->id, $replyComment->attachments);
+                $sent = $emailService->sendReply($ticket, $message, $user->id, $replyComment->attachments, $channel);
                 break;
 
             case 'whatsapp':
@@ -647,11 +648,6 @@ class TicketController extends Controller
                     $wa->sendText($requester->whatsapp_phone, $message);
                     $sent = true;
                 }
-                break;
-
-            case 'portal':
-                // Already added as comment above; widget broadcast happens in addComment logic
-                $sent = true;
                 break;
         }
 
