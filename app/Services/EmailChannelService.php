@@ -80,12 +80,6 @@ class EmailChannelService
             return false;
         }
 
-        // Fallback: also skip if from address matches the channel inbox (loop prevention)
-        if (strtolower($fromEmail) === strtolower($channel->email ?? '')) {
-            Log::info('EmailChannel: skipping loop email from channel address', ['from' => $fromEmail]);
-            return false;
-        }
-
         if ($this->isAutomatedEmail($fromEmail, $headers)) {
             Log::info('EmailChannel: filtered automated email', ['from' => $fromEmail, 'subject' => $subject]);
             return false;
@@ -105,6 +99,13 @@ class EmailChannelService
         $subject   = $this->toUtf8($subject);
 
         $ticket = $this->findExistingTicket($inReplyTo, $references, $subject, $fromEmail);
+
+        // Loop prevention: skip emails from the channel address only when they are NOT
+        // a reply to an existing ticket (avoids blocking requester replies in single-inbox setups)
+        if (!$ticket && strtolower($fromEmail) === strtolower($channel->email ?? '')) {
+            Log::info('EmailChannel: skipping loop email from channel address', ['from' => $fromEmail]);
+            return false;
+        }
 
         if ($ticket) {
             $emailComment = TicketComment::create([
