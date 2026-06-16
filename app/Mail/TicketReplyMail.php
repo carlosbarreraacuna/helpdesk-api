@@ -26,13 +26,13 @@ class TicketReplyMail extends Mailable
         $this->agentName = $agentName;
         $this->channel   = $channel;
 
-        // Load all public comments except the current reply (last one), ordered chronologically
+        // All previous public comments (excluding the reply just added) for the quoted thread
         $this->history = TicketComment::with('user')
             ->where('ticket_id', $ticket->id)
             ->where('is_internal', false)
             ->orderBy('created_at')
             ->get()
-            ->slice(0, -1) // exclude the reply just added
+            ->slice(0, -1)
             ->values();
     }
 
