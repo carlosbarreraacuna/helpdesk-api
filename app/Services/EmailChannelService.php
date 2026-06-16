@@ -93,7 +93,7 @@ class EmailChannelService
             $textBody = $subject;
         }
 
-        $textBody  = $this->toUtf8($textBody);
+        $textBody  = $this->stripQuotedReply($this->toUtf8($textBody));
         $fromName  = $this->toUtf8($fromName);
         $fromEmail = $this->toUtf8($fromEmail);
         $subject   = $this->toUtf8($subject);
@@ -578,5 +578,34 @@ class EmailChannelService
         }
 
         return null;
+    }
+
+    /**
+     * Remove quoted reply content from email body, keeping only the new message text.
+     * Strips Gmail/Outlook "On DATE, NAME wrote:" headers and lines starting with ">".
+     */
+    private function stripQuotedReply(string $text): string
+    {
+        $lines  = preg_split('/\r?\n/', $text);
+        $output = [];
+
+        foreach ($lines as $line) {
+            $trimmed = ltrim($line);
+
+            // Stop at quoted block marker (lines starting with ">")
+            if (str_starts_with($trimmed, '>')) break;
+
+            // Stop at "On DATE, NAME <email> wrote:" (Gmail / Outlook quote header)
+            if (preg_match('/^On .{5,120} wrote:\s*$/u', $trimmed)) break;
+            if (preg_match('/^El .{5,120} escribió:\s*$/u', $trimmed)) break;
+
+            // Stop at common signature delimiters
+            if (preg_match('/^--\s*$/', $line)) break;
+            if (str_starts_with($trimmed, '________________________________')) break;
+
+            $output[] = $line;
+        }
+
+        return trim(implode("\n", $output));
     }
 }
