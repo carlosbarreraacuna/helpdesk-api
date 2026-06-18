@@ -22,3 +22,6 @@ Schedule::job(new \App\Jobs\PurgeOldAuthLogs)->dailyAt('02:00');
 
 // Purge expired and old revoked refresh tokens daily at 3 AM
 Schedule::job(new \App\Jobs\PurgeExpiredRefreshTokens)->dailyAt('03:00');
+
+// Daily database + attachments manifest backup to S3/R2 — 02:30 AM
+Schedule::job(new \App\Jobs\RunDatabaseBackupJob)->dailyAt('02:30');

@@ -30,7 +30,7 @@ class ChatController extends Controller
         $attachmentName = null;
         if ($request->hasFile('attachment')) {
             $file           = $request->file('attachment');
-            $attachmentPath = $file->store('widget-attachments', 'public');
+            $attachmentPath = $file->store('widget-attachments', 's3');
             $attachmentName = $file->getClientOriginalName();
         }
 

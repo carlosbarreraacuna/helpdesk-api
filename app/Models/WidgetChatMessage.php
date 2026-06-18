@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Storage;
 
 class WidgetChatMessage extends Model
 {
@@ -17,6 +18,15 @@ class WidgetChatMessage extends Model
         'is_read' => 'boolean',
         'read_at' => 'datetime',
     ];
+
+    protected $appends = ['attachment_url'];
+
+    public function getAttachmentUrlAttribute(): ?string
+    {
+        return $this->attachment_path
+            ? Storage::disk('s3')->url($this->attachment_path)
+            : null;
+    }
 
     public function session(): BelongsTo
     {

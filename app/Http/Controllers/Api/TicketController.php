@@ -144,7 +144,7 @@ class TicketController extends Controller
         // Upload file if exists
         $attachmentPath = null;
         if ($request->hasFile('attachment')) {
-            $attachmentPath = $request->file('attachment')->store('attachments', 'public');
+            $attachmentPath = $request->file('attachment')->store('attachments', 's3');
         }
 
         // Get "new" status
@@ -424,7 +424,7 @@ class TicketController extends Controller
         foreach ($uploadedFiles as $file) {
             if (!$file || !$file->isValid()) continue;
             if ($file->getSize() > 20 * 1024 * 1024) continue; // 20 MB max
-            $path = $file->store("attachments/tickets/{$ticket->id}", 'public');
+            $path = $file->store("attachments/tickets/{$ticket->id}", 's3');
             \App\Models\TicketCommentAttachment::create([
                 'comment_id' => $comment->id,
                 'path'       => $path,
@@ -637,7 +637,7 @@ class TicketController extends Controller
         foreach ($uploadedFiles as $file) {
             if (!$file || !$file->isValid()) continue;
             if ($file->getSize() > 20 * 1024 * 1024) continue;
-            $path = $file->store("attachments/tickets/{$ticket->id}", 'public');
+            $path = $file->store("attachments/tickets/{$ticket->id}", 's3');
             \App\Models\TicketCommentAttachment::create([
                 'comment_id' => $replyComment->id,
                 'path'       => $path,

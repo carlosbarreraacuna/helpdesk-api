@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\TicketCategoryController;
 use App\Http\Controllers\Api\WorkGroupController;
 use App\Http\Controllers\Api\AiController;
 use App\Http\Controllers\Api\SlaController;
+use App\Http\Controllers\Api\BackupController;
 
 /*
 |--------------------------------------------------------------------------
@@ -287,6 +288,17 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::get('/audit/permissions/roles/{roleId}', [AuditController::class, 'rolePermissionLogs']);
         Route::get('/audit/auth', [AuditController::class, 'authLogs']);
         Route::get('/audit/auth/summary', [AuditController::class, 'authLogsSummary']);
+    });
+
+    // Backup Routes
+    Route::middleware('permission:backups.view')->group(function () {
+        Route::get('/backups', [BackupController::class, 'index']);
+        Route::get('/backups/{id}', [BackupController::class, 'show']);
+        Route::get('/backups/restores/history', [BackupController::class, 'restoreHistory']);
+        Route::get('/backups/restores/{id}/status', [BackupController::class, 'restoreStatus']);
+    });
+    Route::middleware('permission:backups.restore')->group(function () {
+        Route::post('/backups/{id}/restore', [BackupController::class, 'restore']);
     });
 
     // ─── SLA ────────────────────────────────────────────────────────────────

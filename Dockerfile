@@ -11,6 +11,7 @@ RUN apk add --no-cache \
     unzip \
     oniguruma-dev \
     postgresql-dev \
+    postgresql-client \
     icu-dev \
     nginx \
     supervisor \

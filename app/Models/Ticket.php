@@ -40,7 +40,7 @@ class Ticket extends Model
         'validation_rejected_count',
     ];
 
-    protected $appends = ['sla_status'];
+    protected $appends = ['sla_status', 'attachment_url'];
 
     protected $casts = [
         'is_read'                   => 'boolean',
@@ -56,6 +56,13 @@ class Ticket extends Model
         'validation_approved_at'    => 'datetime',
         'validation_rejected_count' => 'integer',
     ];
+
+    public function getAttachmentUrlAttribute(): ?string
+    {
+        return $this->attachment_path
+            ? \Illuminate\Support\Facades\Storage::disk('s3')->url($this->attachment_path)
+            : null;
+    }
 
     public function getSlaStatusAttribute(): string
     {

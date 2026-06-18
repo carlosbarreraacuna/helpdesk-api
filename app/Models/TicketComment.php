@@ -23,7 +23,7 @@ class TicketComment extends Model
     public function getAttachmentUrlAttribute(): ?string
     {
         return $this->attachment_path
-            ? rtrim(config('app.url'), '/') . '/storage/' . $this->attachment_path
+            ? \Illuminate\Support\Facades\Storage::disk('s3')->url($this->attachment_path)
             : null;
     }
 

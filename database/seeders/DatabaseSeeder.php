@@ -35,6 +35,10 @@ class DatabaseSeeder extends Seeder
             AssetTypeSeeder::class,
             AssetMenuSeeder::class,
             EmailChannelSeeder::class,
+            AuditPermissionSeeder::class,
+            AuditMenuSeeder::class,
+            BackupPermissionSeeder::class,
+            BackupMenuSeeder::class,
         ]);
     }
 }
