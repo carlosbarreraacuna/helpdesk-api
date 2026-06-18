@@ -23,9 +23,15 @@ class WidgetChatMessage extends Model
 
     public function getAttachmentUrlAttribute(): ?string
     {
-        return $this->attachment_path
-            ? Storage::disk('s3')->url($this->attachment_path)
-            : null;
+        if (!$this->attachment_path) {
+            return null;
+        }
+
+        try {
+            return Storage::disk('s3')->url($this->attachment_path);
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     public function session(): BelongsTo

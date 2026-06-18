@@ -16,7 +16,11 @@ class TicketCommentAttachment extends Model
 
     public function getUrlAttribute(): string
     {
-        return Storage::disk('s3')->url($this->path);
+        try {
+            return Storage::disk('s3')->url($this->path);
+        } catch (\Throwable $e) {
+            return '';
+        }
     }
 
     public function comment()

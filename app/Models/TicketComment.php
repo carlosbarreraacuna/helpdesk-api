@@ -22,9 +22,15 @@ class TicketComment extends Model
 
     public function getAttachmentUrlAttribute(): ?string
     {
-        return $this->attachment_path
-            ? \Illuminate\Support\Facades\Storage::disk('s3')->url($this->attachment_path)
-            : null;
+        if (!$this->attachment_path) {
+            return null;
+        }
+
+        try {
+            return \Illuminate\Support\Facades\Storage::disk('s3')->url($this->attachment_path);
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     public function ticket()
