@@ -78,6 +78,8 @@ class BackupService
 
     private function buildAttachmentsManifest(string $timestampKey): array
     {
+        // Cloudflare R2 no implementa ListObjectVersions, así que el manifiesto
+        // lista el estado actual de los objetos en vez de su historial de versiones.
         $client = $this->s3Client();
         $bucket = config('filesystems.disks.s3.bucket');
 
@@ -85,18 +87,18 @@ class BackupService
         $params = ['Bucket' => $bucket, 'Prefix' => 'attachments/'];
 
         do {
-            $result = $client->listObjectVersions($params);
-            foreach ($result['Versions'] ?? [] as $version) {
+            $result = $client->listObjectsV2($params);
+            foreach ($result['Contents'] ?? [] as $object) {
                 $objects[] = [
-                    'path'          => $version['Key'],
-                    'version_id'    => $version['VersionId'],
-                    'size'          => $version['Size'],
-                    'etag'          => $version['ETag'],
-                    'last_modified' => (string) $version['LastModified'],
+                    'path'          => $object['Key'],
+                    'size'          => $object['Size'],
+                    'etag'          => $object['ETag'],
+                    'last_modified' => (string) $object['LastModified'],
                 ];
             }
-            $params['KeyMarker'] = $result['NextKeyMarker'] ?? null;
-            $params['VersionIdMarker'] = $result['NextVersionIdMarker'] ?? null;
+            if (!empty($result['NextContinuationToken'])) {
+                $params['ContinuationToken'] = $result['NextContinuationToken'];
+            }
         } while (!empty($result['IsTruncated']));
 
         $manifestPath = "backups/manifest/{$timestampKey}.json";
