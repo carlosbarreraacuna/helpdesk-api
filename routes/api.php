@@ -294,6 +294,7 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     Route::middleware('permission:backups.view')->group(function () {
         Route::get('/backups', [BackupController::class, 'index']);
         Route::get('/backups/{id}', [BackupController::class, 'show']);
+        Route::get('/backups/{id}/download', [BackupController::class, 'download']);
         Route::get('/backups/restores/history', [BackupController::class, 'restoreHistory']);
         Route::get('/backups/restores/{id}/status', [BackupController::class, 'restoreStatus']);
     });

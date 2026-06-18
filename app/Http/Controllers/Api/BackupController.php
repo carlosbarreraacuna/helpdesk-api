@@ -7,6 +7,7 @@ use App\Jobs\RestoreDatabaseBackupJob;
 use App\Models\BackupLog;
 use App\Services\BackupService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * @tags Respaldos
@@ -29,6 +30,20 @@ class BackupController extends Controller
     public function show($id)
     {
         return response()->json(BackupLog::where('type', 'backup')->findOrFail($id));
+    }
+
+    public function download($id)
+    {
+        $backup = BackupLog::where('type', 'backup')
+            ->where('status', 'success')
+            ->findOrFail($id);
+
+        $url = Storage::disk('s3')->temporaryUrl(
+            $backup->db_dump_path,
+            now()->addMinutes(10)
+        );
+
+        return response()->json(['url' => $url]);
     }
 
     public function restoreHistory(Request $request)
