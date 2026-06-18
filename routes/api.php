@@ -281,13 +281,13 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     Route::delete('/modules/{id}', [ModuleController::class, 'destroy']);
     
     // Audit Routes
-    Route::get('/audit/permissions', [AuditController::class, 'permissionLogs']);
-    Route::get('/audit/permissions/users/{userId}', [AuditController::class, 'userPermissionLogs']);
-    Route::get('/audit/permissions/roles/{roleId}', [AuditController::class, 'rolePermissionLogs']);
-    Route::get('/audit/auth', [AuditController::class, 'authLogs'])
-        ->middleware('permission:settings.update');
-    Route::get('/audit/auth/summary', [AuditController::class, 'authLogsSummary'])
-        ->middleware('permission:settings.update');
+    Route::middleware('permission:audit.view')->group(function () {
+        Route::get('/audit/permissions', [AuditController::class, 'permissionLogs']);
+        Route::get('/audit/permissions/users/{userId}', [AuditController::class, 'userPermissionLogs']);
+        Route::get('/audit/permissions/roles/{roleId}', [AuditController::class, 'rolePermissionLogs']);
+        Route::get('/audit/auth', [AuditController::class, 'authLogs']);
+        Route::get('/audit/auth/summary', [AuditController::class, 'authLogsSummary']);
+    });
 
     // ─── SLA ────────────────────────────────────────────────────────────────
     Route::get('/sla/configs', [SlaController::class, 'index']);
