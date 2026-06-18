@@ -4,6 +4,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\HandleCors;
+use Symfony\Component\HttpFoundation\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -29,6 +30,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->api(prepend: [
             HandleCors::class,
         ]);
+
+        // Railway termina TLS y hace proxy a este contenedor — confiamos en el proxy
+        // para leer la IP real del cliente desde X-Forwarded-For (si no, $request->ip()
+        // devuelve la IP interna del proxy de Railway en vez de la del usuario).
+        $middleware->trustProxies(at: '*', headers: Request::HEADER_X_FORWARDED_FOR | Request::HEADER_X_FORWARDED_HOST | Request::HEADER_X_FORWARDED_PORT | Request::HEADER_X_FORWARDED_PROTO);
 
         /*
         |--------------------------------------------------------------------------
