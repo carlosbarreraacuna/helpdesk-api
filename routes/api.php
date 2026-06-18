@@ -49,34 +49,36 @@ Route::options('{any}', function () {
     return response()->json([], 204);
 })->where('any', '.*');
 
-// Public routes (Portal)
-Route::post('/portal/tickets', [TicketController::class, 'store']);
-Route::post('/portal/tickets/search', [TicketController::class, 'searchPublic']);
+// Public routes (Portal) — throttled per IP to prevent abuse/spam
+Route::middleware('throttle:20,1')->group(function () {
+    Route::post('/portal/tickets', [TicketController::class, 'store']);
+    Route::post('/portal/tickets/search', [TicketController::class, 'searchPublic']);
 
-// Public ticket validation — accessible via email link (no auth required)
-Route::post('/portal/tickets/validate/{token}', [TicketController::class, 'validateTicket']);
-Route::get('/portal/tickets/validate/{token}', function (string $token) {
-    $ticket = \App\Models\Ticket::where('validation_token', $token)->first();
-    if (!$ticket) {
-        return response()->json(['message' => 'Enlace inválido o expirado'], 404);
-    }
-    return response()->json([
-        'ticket_number'      => $ticket->ticket_number,
-        'requester_name'     => $ticket->requester_name,
-        'description'        => $ticket->description,
-        'validation_deadline'=> $ticket->validation_deadline,
-        'status'             => $ticket->status?->name,
-    ]);
+    // Public ticket validation — accessible via email link (no auth required)
+    Route::post('/portal/tickets/validate/{token}', [TicketController::class, 'validateTicket']);
+    Route::get('/portal/tickets/validate/{token}', function (string $token) {
+        $ticket = \App\Models\Ticket::where('validation_token', $token)->first();
+        if (!$ticket) {
+            return response()->json(['message' => 'Enlace inválido o expirado'], 404);
+        }
+        return response()->json([
+            'ticket_number'      => $ticket->ticket_number,
+            'requester_name'     => $ticket->requester_name,
+            'description'        => $ticket->description,
+            'validation_deadline'=> $ticket->validation_deadline,
+            'status'             => $ticket->status?->name,
+        ]);
+    });
+
+    // Public KB routes (no auth required)
+    Route::get('/portal/kb/categories', [KbCategoryController::class, 'index']);
+    Route::get('/portal/kb/articles', [KbArticleController::class, 'index']);
+    Route::get('/portal/kb/articles/{id}', [KbArticleController::class, 'show']);
+    Route::get('/portal/kb/suggest', [KbArticleController::class, 'suggest']);
+
+    // Widget KB search — público (usuarios no autenticados pueden buscar)
+    Route::get('/widget/kb/search', [WidgetController::class, 'kbSearch']);
 });
-
-// Public KB routes (no auth required)
-Route::get('/portal/kb/categories', [KbCategoryController::class, 'index']);
-Route::get('/portal/kb/articles', [KbArticleController::class, 'index']);
-Route::get('/portal/kb/articles/{id}', [KbArticleController::class, 'show']);
-Route::get('/portal/kb/suggest', [KbArticleController::class, 'suggest']);
-
-// Widget KB search — público (usuarios no autenticados pueden buscar)
-Route::get('/widget/kb/search', [WidgetController::class, 'kbSearch']);
 
 // Authentication routes
 // Rate limit: max 5 login attempts per minute per IP → locked 15 min
@@ -495,12 +497,14 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
 // Google OAuth2 callback — público (no lleva token de Sanctum)
 Route::get('/google/oauth/callback', [GoogleOAuthController::class, 'callback'])->name('google.oauth.callback');
 
-// WhatsApp Webhook Routes (públicas)
-Route::get('/whatsapp/webhook', [WhatsAppWebhookController::class, 'verify']);
-Route::post('/whatsapp/webhook', [WhatsAppWebhookController::class, 'webhook']);
+// WhatsApp/Gmail webhooks (públicas) — throttle generoso para no perder callbacks legítimos del proveedor
+Route::middleware('throttle:120,1')->group(function () {
+    Route::get('/whatsapp/webhook', [WhatsAppWebhookController::class, 'verify']);
+    Route::post('/whatsapp/webhook', [WhatsAppWebhookController::class, 'webhook']);
 
-// Gmail Pub/Sub push webhook (público — Google no envía auth tokens)
-Route::post('/gmail/webhook', [\App\Http\Controllers\Api\GmailWebhookController::class, 'push']);
+    // Gmail Pub/Sub push webhook (público — Google no envía auth tokens)
+    Route::post('/gmail/webhook', [\App\Http\Controllers\Api\GmailWebhookController::class, 'push']);
+});
 
 // Gmail OAuth2 flow — callback must be defined BEFORE the dynamic {channelId} route
 Route::get('/gmail/oauth/callback',    [\App\Http\Controllers\Api\GmailWebhookController::class, 'oauthCallback'])->name('gmail.oauth.callback');
