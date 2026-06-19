@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\SlaConfig;
 use App\Models\Ticket;
+use App\Models\TicketHistory;
 use App\Services\SlaService;
 use Illuminate\Http\Request;
 
@@ -50,14 +51,79 @@ class SlaController extends Controller
      * Anchored to each ticket's original creation date, so this applies
      * config changes retroactively without resetting the SLA clock.
      */
-    public function recalculate()
+    public function recalculate(Request $request)
     {
-        $count = $this->slaService->recalculateOpenTickets();
+        $result = $this->slaService->recalculateOpenTickets($request->user()->id);
 
         return response()->json([
-            'message' => "Se recalculó el SLA de {$count} ticket(s) abierto(s).",
-            'count'   => $count,
+            'message' => "Se revisaron {$result['count']} ticket(s) abierto(s); {$result['changed']} tuvieron cambios de SLA.",
+            'count'   => $result['count'],
+            'changed' => $result['changed'],
         ]);
+    }
+
+    /**
+     * Paginated list of tickets whose SLA due dates were recalculated
+     * (evidence trail for the "Recalcular SLA" action).
+     */
+    public function history(Request $request)
+    {
+        $query = $this->historyQuery($request);
+
+        return response()->json($query->orderByDesc('created_at')->paginate(50));
+    }
+
+    /**
+     * CSV export of the SLA recalculation history (evidence report).
+     */
+    public function exportHistory(Request $request)
+    {
+        $rows = $this->historyQuery($request)->orderByDesc('created_at')->get();
+
+        $filename = 'sla_recalculos_' . now()->format('Ymd_His') . '.csv';
+
+        return response()->streamDownload(function () use ($rows) {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF"); // BOM so Excel reads UTF-8 accents correctly
+
+            fputcsv($out, [
+                'Ticket', 'Solicitante', 'Prioridad',
+                'SLA anterior', 'SLA nuevo',
+                'Modificado por', 'Fecha del cambio',
+            ]);
+
+            foreach ($rows as $row) {
+                fputcsv($out, [
+                    $row->ticket?->ticket_number ?? $row->ticket_id,
+                    $row->ticket?->requester_name ?? '',
+                    $row->ticket?->priority ?? '',
+                    $row->old_value,
+                    $row->new_value,
+                    $row->user?->name ?? 'Sistema',
+                    $row->created_at->format('Y-m-d H:i:s'),
+                ]);
+            }
+
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    private function historyQuery(Request $request)
+    {
+        $query = TicketHistory::with([
+            'ticket:id,ticket_number,requester_name,priority',
+            'user:id,name,email',
+        ])->where('action', 'sla_recalculado');
+
+        if ($request->date_from) {
+            $query->whereDate('created_at', '>=', $request->date_from);
+        }
+
+        if ($request->date_to) {
+            $query->whereDate('created_at', '<=', $request->date_to);
+        }
+
+        return $query;
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\SlaConfig;
 use App\Models\Ticket;
+use App\Models\TicketHistory;
 use Carbon\Carbon;
 
 class SlaService
@@ -41,18 +42,53 @@ class SlaService
      * Recalculate SLA due dates for all currently open tickets using the
      * latest SlaConfig values, anchored to each ticket's original creation
      * date (so editing the config retroactively applies to in-flight tickets).
+     *
+     * Every ticket whose due dates actually change gets a `ticket_history`
+     * entry (action `sla_recalculado`) with the before/after values, so the
+     * change is auditable and exportable as evidence.
+     *
+     * @return array{count: int, changed: int}
      */
-    public function recalculateOpenTickets(): int
+    public function recalculateOpenTickets(?int $userId = null): array
     {
         $tickets = Ticket::whereNull('resolved_at')
             ->whereNull('closed_at')
             ->get();
 
+        $changed = 0;
+
         foreach ($tickets as $ticket) {
+            $previousResponse   = $ticket->sla_response_due_at?->copy();
+            $previousResolution = $ticket->sla_resolution_due_at?->copy();
+
             $this->calculateAndAssign($ticket, Carbon::parse($ticket->created_at));
+            $ticket->refresh();
+
+            $responseChanged   = $previousResponse?->ne($ticket->sla_response_due_at) ?? $ticket->sla_response_due_at !== null;
+            $resolutionChanged = $previousResolution?->ne($ticket->sla_resolution_due_at) ?? $ticket->sla_resolution_due_at !== null;
+
+            if ($responseChanged || $resolutionChanged) {
+                $changed++;
+
+                TicketHistory::create([
+                    'ticket_id' => $ticket->id,
+                    'user_id'   => $userId,
+                    'action'    => 'sla_recalculado',
+                    'old_value' => sprintf(
+                        'Respuesta: %s | Resolución: %s',
+                        $previousResponse?->format('Y-m-d H:i') ?? 'N/A',
+                        $previousResolution?->format('Y-m-d H:i') ?? 'N/A'
+                    ),
+                    'new_value' => sprintf(
+                        'Respuesta: %s | Resolución: %s',
+                        $ticket->sla_response_due_at?->format('Y-m-d H:i') ?? 'N/A',
+                        $ticket->sla_resolution_due_at?->format('Y-m-d H:i') ?? 'N/A'
+                    ),
+                ]);
+            }
         }
 
-        return $tickets->count();
+        return ['count' => $tickets->count(), 'changed' => $changed];
     }
 
     /**
