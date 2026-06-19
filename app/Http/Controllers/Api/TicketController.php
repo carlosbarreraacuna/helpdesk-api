@@ -397,7 +397,7 @@ class TicketController extends Controller
         // Collect uploaded files — accepts files[], files, or file field names
         $uploadedFiles = $this->collectUploadedFiles($request, ['files', 'file']);
 
-        $comment_text = $request->input('comment', '');
+        $comment_text = $request->input('comment') ?? '';
 
         if (empty(trim($comment_text)) && count($uploadedFiles) === 0) {
             return response()->json(['message' => 'Se requiere un mensaje o un archivo'], 422);
@@ -614,7 +614,7 @@ class TicketController extends Controller
             'channel' => 'required|in:email,whatsapp,portal',
         ]);
 
-        $message = $request->input('message', '');
+        $message = $request->input('message') ?? '';
         $channel = $request->input('channel');
 
         $uploadedFiles = $this->collectUploadedFiles($request, ['files', 'file']);
