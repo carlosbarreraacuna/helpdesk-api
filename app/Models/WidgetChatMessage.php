@@ -28,7 +28,7 @@ class WidgetChatMessage extends Model
         }
 
         try {
-            return Storage::disk('s3')->url($this->attachment_path);
+            return Storage::disk('s3')->temporaryUrl($this->attachment_path, now()->addMinutes(30));
         } catch (\Throwable $e) {
             return null;
         }

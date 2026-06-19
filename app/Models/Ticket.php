@@ -64,7 +64,7 @@ class Ticket extends Model
         }
 
         try {
-            return \Illuminate\Support\Facades\Storage::disk('s3')->url($this->attachment_path);
+            return \Illuminate\Support\Facades\Storage::disk('s3')->temporaryUrl($this->attachment_path, now()->addMinutes(30));
         } catch (\Throwable $e) {
             return null;
         }

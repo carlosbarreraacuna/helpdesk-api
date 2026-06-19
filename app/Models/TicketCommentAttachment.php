@@ -17,7 +17,7 @@ class TicketCommentAttachment extends Model
     public function getUrlAttribute(): string
     {
         try {
-            return Storage::disk('s3')->url($this->path);
+            return Storage::disk('s3')->temporaryUrl($this->path, now()->addMinutes(30));
         } catch (\Throwable $e) {
             return '';
         }
