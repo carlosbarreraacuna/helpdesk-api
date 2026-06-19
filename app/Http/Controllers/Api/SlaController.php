@@ -127,6 +127,133 @@ class SlaController extends Controller
     }
 
     /**
+     * SLA compliance report grouped by agent or by work group.
+     * For each agent/group: counts per SLA status, % de cumplimiento, and
+     * the list of individual tickets (so the UI can show summary + detail).
+     */
+    public function report(Request $request)
+    {
+        return response()->json($this->buildReport($request));
+    }
+
+    /**
+     * CSV export of the SLA compliance report (one row per ticket).
+     */
+    public function exportReport(Request $request)
+    {
+        $groups = $this->buildReport($request);
+        $groupBy = $request->input('group_by', 'agent');
+        $groupLabel = $groupBy === 'group' ? 'Grupo de trabajo' : 'Agente';
+
+        $filename = 'sla_cumplimiento_' . now()->format('Ymd_His') . '.csv';
+
+        return response()->streamDownload(function () use ($groups, $groupLabel) {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF");
+
+            fputcsv($out, [
+                $groupLabel, 'Ticket', 'Prioridad', 'Estado SLA',
+                'Creado', 'Vencimiento SLA', 'Resuelto/Cerrado',
+            ]);
+
+            foreach ($groups as $group) {
+                foreach ($group['tickets'] as $ticket) {
+                    fputcsv($out, [
+                        $group['label'],
+                        $ticket['ticket_number'],
+                        $ticket['priority'],
+                        $ticket['status'],
+                        $ticket['created_at'],
+                        $ticket['due_at'],
+                        $ticket['resolved_at'] ?? '',
+                    ]);
+                }
+            }
+
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * @return array<int, array{
+     *     id: int, label: string, total: int, met: int, on_track: int,
+     *     at_risk: int, breached: int, compliance_pct: float, tickets: array
+     * }>
+     */
+    private function buildReport(Request $request): array
+    {
+        $groupBy = $request->input('group_by', 'agent'); // 'agent' | 'group'
+
+        $query = Ticket::with(['assignedAgent:id,name', 'workGroup:id,name'])
+            ->whereNotNull('sla_resolution_due_at');
+
+        if ($request->date_from) {
+            $query->whereDate('created_at', '>=', $request->date_from);
+        }
+
+        if ($request->date_to) {
+            $query->whereDate('created_at', '<=', $request->date_to);
+        }
+
+        if ($request->priority && $request->priority !== 'all') {
+            $query->where('priority', $request->priority);
+        }
+
+        $tickets = $query->get();
+
+        $groups = [];
+
+        foreach ($tickets as $ticket) {
+            $status = $this->slaService->getStatus($ticket);
+
+            if ($groupBy === 'group') {
+                $key   = $ticket->work_group_id ?? 0;
+                $label = $ticket->workGroup?->name ?? 'Sin grupo asignado';
+            } else {
+                $key   = $ticket->assigned_to ?? 0;
+                $label = $ticket->assignedAgent?->name ?? 'Sin agente asignado';
+            }
+
+            if (!isset($groups[$key])) {
+                $groups[$key] = [
+                    'id'       => $key,
+                    'label'    => $label,
+                    'met'      => 0,
+                    'on_track' => 0,
+                    'at_risk'  => 0,
+                    'breached' => 0,
+                    'tickets'  => [],
+                ];
+            }
+
+            $groups[$key][$status]++;
+            $groups[$key]['tickets'][] = [
+                'id'            => $ticket->id,
+                'ticket_number' => $ticket->ticket_number,
+                'priority'      => $ticket->priority,
+                'status'        => $status,
+                'created_at'    => $ticket->created_at?->format('Y-m-d H:i'),
+                'due_at'        => $ticket->sla_resolution_due_at?->format('Y-m-d H:i'),
+                'resolved_at'   => ($ticket->resolved_at ?? $ticket->closed_at)?->format('Y-m-d H:i'),
+            ];
+        }
+
+        $result = array_values($groups);
+
+        foreach ($result as &$group) {
+            $total = $group['met'] + $group['on_track'] + $group['at_risk'] + $group['breached'];
+            $group['total']          = $total;
+            $group['compliance_pct'] = $total > 0
+                ? round((($total - $group['breached']) / $total) * 100, 1)
+                : 0;
+        }
+
+        usort($result, fn($a, $b) => $b['total'] <=> $a['total']);
+
+        return $result;
+    }
+
+    /**
      * Returns SLA status summary for the dashboard.
      */
     public function dashboard()

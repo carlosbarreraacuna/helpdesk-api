@@ -311,6 +311,8 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         ->middleware('permission:settings.update');
     Route::get('/sla/history', [SlaController::class, 'history']);
     Route::get('/sla/history/export', [SlaController::class, 'exportHistory']);
+    Route::get('/sla/report', [SlaController::class, 'report']);
+    Route::get('/sla/report/export', [SlaController::class, 'exportReport']);
 
     // ─── BASE DE CONOCIMIENTO ───────────────────────────────────────────────
 
