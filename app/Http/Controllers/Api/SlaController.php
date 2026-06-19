@@ -46,6 +46,21 @@ class SlaController extends Controller
     }
 
     /**
+     * Recalculate SLA due dates for all open tickets using the latest config.
+     * Anchored to each ticket's original creation date, so this applies
+     * config changes retroactively without resetting the SLA clock.
+     */
+    public function recalculate()
+    {
+        $count = $this->slaService->recalculateOpenTickets();
+
+        return response()->json([
+            'message' => "Se recalculó el SLA de {$count} ticket(s) abierto(s).",
+            'count'   => $count,
+        ]);
+    }
+
+    /**
      * Returns SLA status summary for the dashboard.
      */
     public function dashboard()

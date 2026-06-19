@@ -307,6 +307,8 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     Route::get('/sla/dashboard', [SlaController::class, 'dashboard']);
     Route::patch('/sla/configs/{id}', [SlaController::class, 'update'])
         ->middleware('permission:settings.update');
+    Route::post('/sla/recalculate', [SlaController::class, 'recalculate'])
+        ->middleware('permission:settings.update');
 
     // ─── BASE DE CONOCIMIENTO ───────────────────────────────────────────────
 

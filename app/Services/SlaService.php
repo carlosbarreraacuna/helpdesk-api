@@ -12,15 +12,20 @@ class SlaService
 
     /**
      * Calculate SLA due dates for a ticket and persist them.
+     *
+     * @param Carbon|null $from Start point for the SLA clock. Defaults to now
+     *                          (new ticket). Pass the ticket's creation date
+     *                          when recalculating an existing ticket so the
+     *                          due dates stay anchored to when it was opened.
      */
-    public function calculateAndAssign(Ticket $ticket): void
+    public function calculateAndAssign(Ticket $ticket, ?Carbon $from = null): void
     {
         $config = SlaConfig::forPriority($ticket->priority);
         if (!$config) {
             return;
         }
 
-        $start = Carbon::now(self::TIMEZONE);
+        $start = ($from ?? Carbon::now())->copy()->timezone(self::TIMEZONE);
 
         $responseDue   = $this->addBusinessHours($start->copy(), $config->response_time_hours, $config);
         $resolutionDue = $this->addBusinessHours($start->copy(), $config->resolution_time_hours, $config);
@@ -30,6 +35,24 @@ class SlaService
             'sla_resolution_due_at' => $resolutionDue->utc(),
             'sla_due_date'          => $resolutionDue->utc(),
         ]);
+    }
+
+    /**
+     * Recalculate SLA due dates for all currently open tickets using the
+     * latest SlaConfig values, anchored to each ticket's original creation
+     * date (so editing the config retroactively applies to in-flight tickets).
+     */
+    public function recalculateOpenTickets(): int
+    {
+        $tickets = Ticket::whereNull('resolved_at')
+            ->whereNull('closed_at')
+            ->get();
+
+        foreach ($tickets as $ticket) {
+            $this->calculateAndAssign($ticket, Carbon::parse($ticket->created_at));
+        }
+
+        return $tickets->count();
     }
 
     /**
