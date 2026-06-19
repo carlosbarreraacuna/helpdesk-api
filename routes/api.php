@@ -313,6 +313,7 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     Route::get('/sla/history/export', [SlaController::class, 'exportHistory']);
     Route::get('/sla/report', [SlaController::class, 'report']);
     Route::get('/sla/report/export', [SlaController::class, 'exportReport']);
+    Route::get('/sla/breached-tickets', [SlaController::class, 'breachedTickets']);
 
     // ─── BASE DE CONOCIMIENTO ───────────────────────────────────────────────
 

@@ -268,28 +268,52 @@ class SlaController extends Controller
             'breached' => 0,
         ];
 
-        $breachedTickets = [];
-
         foreach ($open as $ticket) {
             $status = $this->slaService->getStatus($ticket);
             if (array_key_exists($status, $summary)) {
                 $summary[$status]++;
             }
-            if ($status === 'breached') {
-                $breachedTickets[] = [
-                    'id'             => $ticket->id,
-                    'ticket_number'  => $ticket->ticket_number,
-                    'requester_name' => $ticket->requester_name,
-                    'priority'       => $ticket->priority,
-                    'due_at'         => $ticket->sla_resolution_due_at,
-                    'assigned_to'    => $ticket->assignedAgent?->name,
-                ];
-            }
         }
 
-        return response()->json([
-            'summary'          => $summary,
-            'breached_tickets' => $breachedTickets,
+        return response()->json(['summary' => $summary]);
+    }
+
+    /**
+     * Paginated, searchable list of open tickets whose SLA is currently
+     * breached (due date already passed without being resolved/closed).
+     */
+    public function breachedTickets(Request $request)
+    {
+        $query = Ticket::whereNull('closed_at')
+            ->whereNull('resolved_at')
+            ->whereNotNull('sla_resolution_due_at')
+            ->where('sla_resolution_due_at', '<=', now())
+            ->with('assignedAgent:id,name');
+
+        if ($request->search) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('ticket_number', 'like', "%{$search}%")
+                  ->orWhere('requester_name', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->priority && $request->priority !== 'all') {
+            $query->where('priority', $request->priority);
+        }
+
+        $tickets = $query->orderBy('sla_resolution_due_at')
+            ->paginate($request->input('per_page', 10));
+
+        $tickets->getCollection()->transform(fn (Ticket $ticket) => [
+            'id'             => $ticket->id,
+            'ticket_number'  => $ticket->ticket_number,
+            'requester_name' => $ticket->requester_name,
+            'priority'       => $ticket->priority,
+            'due_at'         => $ticket->sla_resolution_due_at,
+            'assigned_to'    => $ticket->assignedAgent?->name,
         ]);
+
+        return response()->json($tickets);
     }
 }
