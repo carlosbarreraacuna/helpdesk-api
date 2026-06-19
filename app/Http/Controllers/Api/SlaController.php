@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\SlaConfig;
+use App\Models\SlaOverride;
 use App\Models\Ticket;
 use App\Models\TicketHistory;
 use App\Services\SlaService;
@@ -315,5 +316,72 @@ class SlaController extends Controller
         ]);
 
         return response()->json($tickets);
+    }
+
+    /**
+     * SLA matrix (alta/media/baja) configured for a specific agent or group.
+     * Returns only the rows that exist — priorities without an override are
+     * simply absent, meaning that priority inherits from the next level
+     * (group, then the global config).
+     */
+    public function overrides(Request $request)
+    {
+        $request->validate([
+            'scope'    => 'required|in:agent,group',
+            'scope_id' => 'required|integer',
+        ]);
+
+        $overrides = SlaOverride::where('scope', $request->scope)
+            ->where('scope_id', $request->scope_id)
+            ->orderBy('priority')
+            ->get();
+
+        return response()->json($overrides);
+    }
+
+    /**
+     * Create or update one priority row of an agent/group's SLA matrix.
+     */
+    public function upsertOverride(Request $request)
+    {
+        $validated = $request->validate([
+            'scope'                  => 'required|in:agent,group',
+            'scope_id'               => 'required|integer',
+            'priority'               => 'required|in:alta,media,baja',
+            'response_time_hours'    => 'required|integer|min:1|max:720',
+            'resolution_time_hours'  => 'required|integer|min:1|max:720',
+            'alert_threshold'        => 'required|integer|min:10|max:99',
+            'work_start_hour'        => 'required|integer|min:0|max:23',
+            'work_end_hour'          => 'required|integer|min:1|max:24',
+        ]);
+
+        if ($validated['work_start_hour'] >= $validated['work_end_hour']) {
+            return response()->json([
+                'message' => 'La hora de inicio debe ser anterior a la hora de fin.',
+            ], 422);
+        }
+
+        $override = SlaOverride::updateOrCreate(
+            [
+                'scope'    => $validated['scope'],
+                'scope_id' => $validated['scope_id'],
+                'priority' => $validated['priority'],
+            ],
+            $validated
+        );
+
+        return response()->json($override);
+    }
+
+    /**
+     * Remove one priority row from an agent/group's SLA matrix, reverting
+     * that priority to inherit from the group/global config.
+     */
+    public function destroyOverride(int $id)
+    {
+        $override = SlaOverride::findOrFail($id);
+        $override->delete();
+
+        return response()->json(['message' => 'Configuración eliminada. Esta prioridad ahora hereda el SLA general.']);
     }
 }

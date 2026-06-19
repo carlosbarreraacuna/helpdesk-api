@@ -11,7 +11,6 @@ use App\Models\TicketParticipant;
 use App\Models\TicketStatus;
 use App\Models\TicketValidation;
 use App\Models\HelpdeskSetting;
-use App\Models\SlaConfig;
 use App\Models\User;
 use App\Models\WidgetChatSession;
 use App\Models\WidgetChatMessage;
@@ -45,7 +44,7 @@ class TicketController extends Controller
     {
         $user = $request->user();
         
-        $query = Ticket::with(['status', 'assignedAgent', 'createdBy']);
+        $query = Ticket::with(['status', 'assignedAgent', 'workGroup', 'createdBy']);
 
         // Filter according to role
         if ($user->role->name === 'usuario') {
@@ -115,6 +114,16 @@ class TicketController extends Controller
                 return $ticket;
             });
         }
+
+        // Hypothetical SLA due date per agent/group matrix, for the "SLA Agente"
+        // / "SLA Grupo" columns in the ticket list — null when that agent/group
+        // has no own SLA matrix configured (it just inherits the global one).
+        $slaService = app(SlaService::class);
+        $results->getCollection()->transform(function ($ticket) use ($slaService) {
+            $ticket->sla_agent_due_at = $slaService->hypotheticalDueAt($ticket, 'agent');
+            $ticket->sla_group_due_at = $slaService->hypotheticalDueAt($ticket, 'group');
+            return $ticket;
+        });
 
         return response()->json($results);
     }
@@ -283,17 +292,17 @@ class TicketController extends Controller
         ]);
 
         $ticket = Ticket::findOrFail($id);
-        
-        // Calculate SLA
-        $slaConfig = SlaConfig::where('priority', $validated['priority'] ?? $ticket->priority)->first();
-        $slaDueDate = now()->addHours($slaConfig->response_time_hours);
 
         $ticket->update([
             'assigned_to' => $validated['agent_id'],
             'status_id' => TicketStatus::where('name', 'asignado')->first()->id,
             'priority' => $validated['priority'] ?? $ticket->priority,
-            'sla_due_date' => $slaDueDate,
         ]);
+
+        // Recalculate SLA now that the agent (and possibly priority) changed —
+        // applies the agent's own SLA matrix if configured, else the group's,
+        // else the global config.
+        app(SlaService::class)->recalculateTicket($ticket, $user->id);
 
         // History
         TicketHistory::create([
@@ -325,6 +334,8 @@ class TicketController extends Controller
             'assigned_to' => $validated['supervisor_id'],
             'status_id' => TicketStatus::where('name', 'escalado')->first()->id,
         ]);
+
+        app(SlaService::class)->recalculateTicket($ticket, $user->id);
 
         // History
         TicketHistory::create([

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\SlaConfig;
+use App\Models\SlaOverride;
 use App\Models\Ticket;
 use App\Models\TicketHistory;
 use Carbon\Carbon;
@@ -21,7 +22,7 @@ class SlaService
      */
     public function calculateAndAssign(Ticket $ticket, ?Carbon $from = null): void
     {
-        $config = SlaConfig::forPriority($ticket->priority);
+        $config = $this->configFor($ticket);
         if (!$config) {
             return;
         }
@@ -39,13 +40,56 @@ class SlaService
     }
 
     /**
+     * Resolves which SLA config applies to a ticket, following the
+     * precedence: SLA propio del agente asignado > SLA propio del grupo de
+     * trabajo del ticket > configuración global por prioridad.
+     */
+    private function configFor(Ticket $ticket): SlaConfig|SlaOverride|null
+    {
+        if ($ticket->assigned_to) {
+            $agentOverride = SlaOverride::forScope('agent', $ticket->assigned_to, $ticket->priority);
+            if ($agentOverride) {
+                return $agentOverride;
+            }
+        }
+
+        if ($ticket->work_group_id) {
+            $groupOverride = SlaOverride::forScope('group', $ticket->work_group_id, $ticket->priority);
+            if ($groupOverride) {
+                return $groupOverride;
+            }
+        }
+
+        return SlaConfig::forPriority($ticket->priority);
+    }
+
+    /**
+     * Hypothetical resolution due date for a ticket if it were governed by
+     * the SLA matrix of the given scope ('agent' or 'group'), regardless of
+     * which source actually wins for the ticket's official SLA. Returns null
+     * if that scope has no own SLA matrix configured for this ticket.
+     */
+    public function hypotheticalDueAt(Ticket $ticket, string $scope): ?Carbon
+    {
+        $scopeId = $scope === 'agent' ? $ticket->assigned_to : $ticket->work_group_id;
+        if (!$scopeId) {
+            return null;
+        }
+
+        $override = SlaOverride::forScope($scope, $scopeId, $ticket->priority);
+        if (!$override) {
+            return null;
+        }
+
+        $start = Carbon::parse($ticket->created_at);
+
+        return $this->addBusinessHours($start->copy(), $override->resolution_time_hours, $override)->utc();
+    }
+
+    /**
      * Recalculate SLA due dates for all currently open tickets using the
-     * latest SlaConfig values, anchored to each ticket's original creation
-     * date (so editing the config retroactively applies to in-flight tickets).
-     *
-     * Every ticket whose due dates actually change gets a `ticket_history`
-     * entry (action `sla_recalculado`) with the before/after values, so the
-     * change is auditable and exportable as evidence.
+     * latest config (global, group or agent matrix), anchored to each
+     * ticket's original creation date.
      *
      * @return array{count: int, changed: int}
      */
@@ -58,33 +102,8 @@ class SlaService
         $changed = 0;
 
         foreach ($tickets as $ticket) {
-            $previousResponse   = $ticket->sla_response_due_at?->copy();
-            $previousResolution = $ticket->sla_resolution_due_at?->copy();
-
-            $this->calculateAndAssign($ticket, Carbon::parse($ticket->created_at));
-            $ticket->refresh();
-
-            $responseChanged   = $previousResponse?->ne($ticket->sla_response_due_at) ?? $ticket->sla_response_due_at !== null;
-            $resolutionChanged = $previousResolution?->ne($ticket->sla_resolution_due_at) ?? $ticket->sla_resolution_due_at !== null;
-
-            if ($responseChanged || $resolutionChanged) {
+            if ($this->recalculateTicket($ticket, $userId)) {
                 $changed++;
-
-                TicketHistory::create([
-                    'ticket_id' => $ticket->id,
-                    'user_id'   => $userId,
-                    'action'    => 'sla_recalculado',
-                    'old_value' => sprintf(
-                        'Respuesta: %s | Resolución: %s',
-                        $previousResponse?->format('Y-m-d H:i') ?? 'N/A',
-                        $previousResolution?->format('Y-m-d H:i') ?? 'N/A'
-                    ),
-                    'new_value' => sprintf(
-                        'Respuesta: %s | Resolución: %s',
-                        $ticket->sla_response_due_at?->format('Y-m-d H:i') ?? 'N/A',
-                        $ticket->sla_resolution_due_at?->format('Y-m-d H:i') ?? 'N/A'
-                    ),
-                ]);
             }
         }
 
@@ -92,10 +111,56 @@ class SlaService
     }
 
     /**
+     * Recalculates a single open ticket's SLA due dates, anchored to its
+     * creation date, and — if they actually changed — logs a `ticket_history`
+     * entry (action `sla_recalculado`) with before/after values for audit.
+     *
+     * Returns true if the SLA changed, false otherwise (including when the
+     * ticket is already resolved/closed, in which case nothing is touched).
+     */
+    public function recalculateTicket(Ticket $ticket, ?int $userId = null): bool
+    {
+        if ($ticket->resolved_at || $ticket->closed_at) {
+            return false;
+        }
+
+        $previousResponse   = $ticket->sla_response_due_at?->copy();
+        $previousResolution = $ticket->sla_resolution_due_at?->copy();
+
+        $this->calculateAndAssign($ticket, Carbon::parse($ticket->created_at));
+        $ticket->refresh();
+
+        $responseChanged   = $previousResponse?->ne($ticket->sla_response_due_at) ?? $ticket->sla_response_due_at !== null;
+        $resolutionChanged = $previousResolution?->ne($ticket->sla_resolution_due_at) ?? $ticket->sla_resolution_due_at !== null;
+
+        if (!$responseChanged && !$resolutionChanged) {
+            return false;
+        }
+
+        TicketHistory::create([
+            'ticket_id' => $ticket->id,
+            'user_id'   => $userId,
+            'action'    => 'sla_recalculado',
+            'old_value' => sprintf(
+                'Respuesta: %s | Resolución: %s',
+                $previousResponse?->format('Y-m-d H:i') ?? 'N/A',
+                $previousResolution?->format('Y-m-d H:i') ?? 'N/A'
+            ),
+            'new_value' => sprintf(
+                'Respuesta: %s | Resolución: %s',
+                $ticket->sla_response_due_at?->format('Y-m-d H:i') ?? 'N/A',
+                $ticket->sla_resolution_due_at?->format('Y-m-d H:i') ?? 'N/A'
+            ),
+        ]);
+
+        return true;
+    }
+
+    /**
      * Add N business hours to a datetime.
      * Business days: Monday–Friday, between work_start_hour and work_end_hour.
      */
-    public function addBusinessHours(Carbon $from, int $hours, SlaConfig $config): Carbon
+    public function addBusinessHours(Carbon $from, int $hours, SlaConfig|SlaOverride $config): Carbon
     {
         $current = $from->copy()->timezone(self::TIMEZONE);
         $remaining = $hours;
@@ -144,7 +209,7 @@ class SlaService
         }
 
         // Calculate usage percentage to detect at_risk
-        $config = SlaConfig::forPriority($ticket->priority);
+        $config = $this->configFor($ticket);
         if ($config) {
             $totalMinutes   = $config->resolution_time_hours * 60;
             $usedMinutes    = Carbon::parse($ticket->created_at)->diffInMinutes($now);
@@ -172,7 +237,7 @@ class SlaService
             ->get();
     }
 
-    private function moveToBusinessHours(Carbon $dt, SlaConfig $config): Carbon
+    private function moveToBusinessHours(Carbon $dt, SlaConfig|SlaOverride $config): Carbon
     {
         // Skip weekends
         while ($dt->isWeekend()) {
@@ -193,7 +258,7 @@ class SlaService
         return $dt;
     }
 
-    private function nextBusinessDayStart(Carbon $dt, SlaConfig $config): Carbon
+    private function nextBusinessDayStart(Carbon $dt, SlaConfig|SlaOverride $config): Carbon
     {
         $next = $dt->copy()->addDay()->setTime($config->work_start_hour, 0, 0);
         return $this->moveToBusinessHours($next, $config);

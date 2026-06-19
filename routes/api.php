@@ -314,6 +314,11 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     Route::get('/sla/report', [SlaController::class, 'report']);
     Route::get('/sla/report/export', [SlaController::class, 'exportReport']);
     Route::get('/sla/breached-tickets', [SlaController::class, 'breachedTickets']);
+    Route::get('/sla/overrides', [SlaController::class, 'overrides']);
+    Route::post('/sla/overrides', [SlaController::class, 'upsertOverride'])
+        ->middleware('permission:settings.update');
+    Route::delete('/sla/overrides/{id}', [SlaController::class, 'destroyOverride'])
+        ->middleware('permission:settings.update');
 
     // ─── BASE DE CONOCIMIENTO ───────────────────────────────────────────────
 

@@ -6,12 +6,13 @@ use App\Models\Ticket;
 use App\Models\WorkGroup;
 use App\Models\TicketHistory;
 use App\Models\TicketStatus;
-use App\Models\SlaConfig;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
 
 class TicketAssignmentService
 {
+    public function __construct(private readonly SlaService $slaService) {}
+
     /**
      * Tries to auto-assign a ticket to the best matching work group and agent.
      * Called right after ticket creation.
@@ -52,6 +53,8 @@ class TicketAssignmentService
             'status_id'   => TicketStatus::where('name', 'nuevo')->value('id'),
         ]);
 
+        $this->slaService->recalculateTicket($ticket, $agent->id);
+
         TicketHistory::create([
             'ticket_id' => $ticket->id,
             'user_id'   => $agent->id,
@@ -76,15 +79,15 @@ class TicketAssignmentService
 
     private function doAssign(Ticket $ticket, WorkGroup $group, ?User $agent): void
     {
-        $sla = SlaConfig::where('priority', $ticket->priority)->first();
-        $slaDue = $sla ? now()->addHours($sla->response_time_hours) : null;
-
         $ticket->update([
             'work_group_id' => $group->id,
             'assigned_to'   => $agent?->id,
             'status_id'     => TicketStatus::where('name', $agent ? 'asignado' : 'nuevo')->value('id'),
-            'sla_due_date'  => $slaDue,
         ]);
+
+        // Now that the group (and possibly the agent) are known, calculate
+        // the SLA using the agent/group matrix if configured, else the global.
+        $this->slaService->calculateAndAssign($ticket, $ticket->created_at);
 
         $groupLabel = "Grupo: {$group->name}";
         $agentLabel = $agent ? " → Agente: {$agent->name}" : ' → Sin agente disponible en el grupo.';
