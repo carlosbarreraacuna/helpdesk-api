@@ -39,6 +39,7 @@ class DatabaseSeeder extends Seeder
             AuditMenuSeeder::class,
             BackupPermissionSeeder::class,
             BackupMenuSeeder::class,
+            SlaMenuSeeder::class,
         ]);
     }
 }
