@@ -234,6 +234,8 @@ class TicketController extends Controller
             'message' => 'Ticket creado exitosamente',
             'ticket_number' => $ticketNumber,
             'verification_code' => $verificationCode,
+            'category' => $ticket->category?->name,
+            'assigned_agent' => $ticket->assignedAgent?->name,
         ], 201);
     }
 
