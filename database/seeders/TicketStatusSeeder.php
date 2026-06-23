@@ -16,12 +16,11 @@ class TicketStatusSeeder extends Seeder
             ['name' => 'nuevo', 'color' => '#FCD34D', 'order' => 1],
             ['name' => 'asignado', 'color' => '#60A5FA', 'order' => 2],
             ['name' => 'en_progreso', 'color' => '#A78BFA', 'order' => 3],
-            ['name' => 'pendiente_usuario', 'color' => '#FB923C', 'order' => 4],
-            ['name' => 'escalado', 'color' => '#F472B6', 'order' => 5],
+            ['name' => 'escalado', 'color' => '#F472B6', 'order' => 4],
+            ['name' => 'pendiente_validacion', 'color' => '#F59E0B', 'order' => 5],
             ['name' => 'resuelto', 'color' => '#34D399', 'order' => 6],
-            ['name' => 'pendiente_validacion', 'color' => '#F59E0B', 'order' => 7],
-            ['name' => 'cerrado', 'color' => '#9CA3AF', 'order' => 8],
-            ['name' => 'reabierto', 'color' => '#EF4444', 'order' => 9],
+            ['name' => 'cerrado', 'color' => '#9CA3AF', 'order' => 7],
+            ['name' => 'reabierto', 'color' => '#EF4444', 'order' => 8],
         ]);
     }
 }

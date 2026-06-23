@@ -158,6 +158,7 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     Route::get('/tickets/{id}/comments', [TicketController::class, 'getComments']);
     Route::get('/tickets/{id}/history', [TicketController::class, 'getHistory']);
     Route::post('/tickets/{id}/close', [TicketController::class, 'close']);
+    Route::post('/tickets/{id}/reopen', [TicketController::class, 'reopen'])->middleware('permission:tickets.reopen');
     Route::post('/tickets/{id}/request-validation', [TicketController::class, 'requestValidation']);
     Route::get('/tickets/{id}/validation-status', [TicketController::class, 'getValidationStatus']);
     Route::post('/tickets/{id}/validate-portal', [TicketController::class, 'validateByPortal']);

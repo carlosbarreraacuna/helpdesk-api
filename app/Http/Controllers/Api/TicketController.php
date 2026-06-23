@@ -293,9 +293,14 @@ class TicketController extends Controller
 
         $ticket = Ticket::findOrFail($id);
 
+        // Reassigning a ticket that already had a different agent counts as
+        // an escalation/transfer; the first assignment is just "asignado".
+        $isReassignment = $ticket->assigned_to && $ticket->assigned_to !== (int) $validated['agent_id'];
+        $statusName     = $isReassignment ? 'escalado' : 'asignado';
+
         $ticket->update([
             'assigned_to' => $validated['agent_id'],
-            'status_id' => TicketStatus::where('name', 'asignado')->first()->id,
+            'status_id' => TicketStatus::where('name', $statusName)->first()->id,
             'priority' => $validated['priority'] ?? $ticket->priority,
         ]);
 
@@ -308,8 +313,8 @@ class TicketController extends Controller
         TicketHistory::create([
             'ticket_id' => $ticket->id,
             'user_id' => $user->id,
-            'action' => 'asignado',
-            'new_value' => "Asignado a " . User::find($validated['agent_id'])->name,
+            'action' => $isReassignment ? 'escalado' : 'asignado',
+            'new_value' => ($isReassignment ? "Reasignado a " : "Asignado a ") . User::find($validated['agent_id'])->name,
         ]);
 
         return response()->json(['message' => 'Ticket asignado correctamente', 'ticket' => $ticket]);
@@ -414,8 +419,9 @@ class TicketController extends Controller
             return response()->json(['message' => 'Se requiere un mensaje o un archivo'], 422);
         }
 
-        $user   = $request->user();
-        $ticket = Ticket::findOrFail($id);
+        $user        = $request->user();
+        $ticket      = Ticket::with('status')->findOrFail($id);
+        $is_internal = $request->boolean('is_internal', false);
 
         if ($user->role->name === 'usuario') {
             $isRequester  = $ticket->requester_email === $user->email;
@@ -425,11 +431,22 @@ class TicketController extends Controller
             }
         }
 
+        // Any public reply from staff moves the ticket to "en_progreso",
+        // except while it's closed or waiting on the requester's validation
+        // (those flows are driven explicitly, not by chat activity).
+        if (!$is_internal && in_array($user->role->name, ['agente', 'supervisor', 'admin'])
+            && !in_array($ticket->status->name, ['cerrado', 'pendiente_validacion'])) {
+            $inProgress = TicketStatus::where('name', 'en_progreso')->first();
+            if ($inProgress && $ticket->status_id !== $inProgress->id) {
+                $ticket->update(['status_id' => $inProgress->id]);
+            }
+        }
+
         $comment = TicketComment::create([
             'ticket_id'   => $ticket->id,
             'user_id'     => $user->id,
             'comment'     => $comment_text,
-            'is_internal' => $request->boolean('is_internal', false),
+            'is_internal' => $is_internal,
         ]);
 
         foreach ($uploadedFiles as $file) {
@@ -445,8 +462,6 @@ class TicketController extends Controller
         }
 
         $comment->load('attachments');
-
-        $is_internal = $request->boolean('is_internal', false);
 
         // If the ticket has an active widget session and the comment is public,
         // create a WidgetChatMessage so the user's chat receives it in real time.
@@ -757,8 +772,8 @@ class TicketController extends Controller
             return response()->json(['message' => 'No autorizado'], 403);
         }
 
-        // Block closure if validation is required but not yet approved
-        if ($ticket->validation_requested_at && !$ticket->validation_approved_at) {
+        // Block closure while the ticket is waiting on the user's validation
+        if ($ticket->status->name === 'pendiente_validacion') {
             return response()->json([
                 'message' => 'El ticket no puede cerrarse hasta que el usuario confirme que la solución fue satisfactoria.',
                 'validation_pending' => true,
@@ -779,6 +794,35 @@ class TicketController extends Controller
         ]);
 
         return response()->json(['message' => 'Ticket cerrado correctamente']);
+    }
+
+    public function reopen(Request $request, $id)
+    {
+        $user   = $request->user();
+        $ticket = Ticket::with('status')->findOrFail($id);
+
+        if ($ticket->status->name !== 'cerrado') {
+            return response()->json(['message' => 'Solo se pueden reabrir tickets cerrados'], 422);
+        }
+
+        $ticket->update([
+            'status_id'                 => TicketStatus::where('name', 'reabierto')->first()->id,
+            'closed_at'                 => null,
+            'validation_requested_at'   => null,
+            'validation_deadline'       => null,
+            'validation_token'          => null,
+            'validation_approved_at'    => null,
+            'validation_rejected_count' => 0,
+        ]);
+
+        TicketHistory::create([
+            'ticket_id' => $ticket->id,
+            'user_id'   => $user->id,
+            'action'    => 'reabierto',
+            'new_value' => $request->input('reason') ?: 'Ticket reabierto',
+        ]);
+
+        return response()->json(['message' => 'Ticket reabierto correctamente']);
     }
 
     public function requestValidation(Request $request, $id)
@@ -911,7 +955,9 @@ class TicketController extends Controller
         ]);
 
         if ($action === 'approved') {
+            $approvedStatus = TicketStatus::where('name', 'resuelto')->first();
             $ticket->update([
+                'status_id'              => $approvedStatus->id,
                 'validation_approved_at' => now(),
                 'validation_token'       => null,
             ]);
@@ -988,7 +1034,7 @@ class TicketController extends Controller
             'validation_approved_at'   => $ticket->validation_approved_at,
             'validation_rejected_count'=> $ticket->validation_rejected_count,
             'status'                   => $ticket->status->name,
-            'can_close'                => (bool) $ticket->validation_approved_at,
+            'can_close'                => $ticket->status->name !== 'pendiente_validacion',
             'history'                  => $ticket->validations->map(fn($v) => [
                 'action'     => $v->action,
                 'comment'    => $v->comment,
