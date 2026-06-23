@@ -654,6 +654,17 @@ class TicketController extends Controller
         $user   = $request->user();
         $ticket = Ticket::with(['status', 'assignedAgent'])->findOrFail($id);
 
+        // Any public reply from staff moves the ticket to "en_progreso",
+        // except while it's closed or waiting on the requester's validation
+        // (those flows are driven explicitly, not by chat activity).
+        if (in_array($user->role->name, ['agente', 'supervisor', 'admin'])
+            && !in_array($ticket->status->name, ['cerrado', 'pendiente_validacion'])) {
+            $inProgress = TicketStatus::where('name', 'en_progreso')->first();
+            if ($inProgress && $ticket->status_id !== $inProgress->id) {
+                $ticket->update(['status_id' => $inProgress->id]);
+            }
+        }
+
         // Add to ticket timeline as a public comment
         $replyComment = TicketComment::create([
             'ticket_id'   => $ticket->id,
