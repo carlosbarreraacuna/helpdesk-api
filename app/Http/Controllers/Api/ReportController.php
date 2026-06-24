@@ -257,6 +257,214 @@ class ReportController extends Controller
         ]);
     }
 
+    public function ticketsByChannel(Request $request)
+    {
+        $query = $this->applyUserFilters(Ticket::query(), $request->user());
+
+        $data = $query->select('channel', DB::raw('count(*) as count'))
+            ->groupBy('channel')
+            ->get();
+
+        $labels = [
+            'portal' => 'Portal',
+            'email' => 'Email',
+            'whatsapp' => 'WhatsApp',
+        ];
+
+        $colors = [
+            'portal' => '#3B82F6',
+            'email' => '#F59E0B',
+            'whatsapp' => '#10B981',
+        ];
+
+        return response()->json([
+            'labels' => $data->pluck('channel')->map(fn($c) => $labels[$c] ?? ($c ?: 'Sin canal')),
+            'datasets' => [[
+                'data' => $data->pluck('count'),
+                'backgroundColor' => $data->pluck('channel')->map(fn($c) => $colors[$c] ?? '#6B7280'),
+            ]]
+        ]);
+    }
+
+    public function ticketsByCategory(Request $request)
+    {
+        $query = $this->applyUserFilters(Ticket::query(), $request->user());
+
+        $data = $query->select('category_id', DB::raw('count(*) as count'))
+            ->with('category:id,name')
+            ->groupBy('category_id')
+            ->orderByDesc('count')
+            ->limit(10)
+            ->get();
+
+        return response()->json([
+            'labels' => $data->map(fn($item) => $item->category->name ?? 'Sin categoría'),
+            'datasets' => [[
+                'label' => 'Tickets',
+                'data' => $data->pluck('count'),
+                'backgroundColor' => '#8B5CF6',
+            ]]
+        ]);
+    }
+
+    public function backlogAging(Request $request)
+    {
+        $query = $this->applyUserFilters(Ticket::query(), $request->user());
+
+        $open = $query->whereHas('status', function($q) {
+            $q->whereNotIn('name', ['resuelto', 'cerrado']);
+        })->with('status:id,name')->get();
+
+        $buckets = [
+            '0-2 días' => 0,
+            '3-5 días' => 0,
+            '6-10 días' => 0,
+            '+10 días' => 0,
+        ];
+
+        foreach ($open as $ticket) {
+            $days = $ticket->created_at->diffInDays(now());
+            if ($days <= 2) $buckets['0-2 días']++;
+            elseif ($days <= 5) $buckets['3-5 días']++;
+            elseif ($days <= 10) $buckets['6-10 días']++;
+            else $buckets['+10 días']++;
+        }
+
+        return response()->json([
+            'labels' => array_keys($buckets),
+            'datasets' => [[
+                'label' => 'Tickets abiertos',
+                'data' => array_values($buckets),
+                'backgroundColor' => ['#10B981', '#F59E0B', '#F97316', '#EF4444'],
+            ]]
+        ]);
+    }
+
+    public function validationRejectionRate(Request $request)
+    {
+        $query = $this->applyUserFilters(Ticket::query(), $request->user());
+
+        $totalValidated = $query->whereNotNull('validation_requested_at')->count();
+
+        $query2 = $this->applyUserFilters(Ticket::query(), $request->user());
+        $totalRejections = $query2->where('validation_rejected_count', '>', 0)->count();
+
+        $rate = $totalValidated > 0 ? round(($totalRejections / $totalValidated) * 100, 1) : 0;
+
+        return response()->json([
+            'value' => $rate,
+            'label' => 'Tasa de Rechazo de Validaciones',
+            'format' => 'percent',
+        ]);
+    }
+
+    public function unassignedOrStalledTickets(Request $request)
+    {
+        $user = $request->user();
+
+        $query = Ticket::whereHas('status', function($q) {
+            $q->whereNotIn('name', ['resuelto', 'cerrado']);
+        });
+
+        if ($user->role->name === 'agente') {
+            $query->where('assigned_to', $user->id);
+        } elseif ($user->role->name === 'supervisor') {
+            $query->where(function($q) use ($user) {
+                $q->whereNull('assigned_to')
+                  ->orWhereHas('assignedAgent', function($q2) use ($user) {
+                      $q2->where('area_id', $user->area_id);
+                  });
+            });
+        }
+
+        $stalledDays = 3;
+
+        $tickets = $query->with('status', 'assignedAgent')
+            ->get()
+            ->filter(function($t) use ($stalledDays) {
+                return is_null($t->assigned_to) || $t->created_at->diffInDays(now()) >= $stalledDays;
+            })
+            ->map(function($t) {
+                return [
+                    'ticket_number' => $t->ticket_number,
+                    'status' => $t->status->name,
+                    'priority' => $t->priority,
+                    'agent' => $t->assignedAgent->name ?? 'Sin asignar',
+                    'days_open' => (int) $t->created_at->diffInDays(now()),
+                ];
+            })
+            ->values();
+
+        return response()->json($tickets);
+    }
+
+    public function validationsRejectedByTeam(Request $request)
+    {
+        $query = $this->applyUserFilters(Ticket::query(), $request->user());
+
+        $tickets = $query->where('validation_rejected_count', '>', 0)
+            ->with('assignedAgent', 'status')
+            ->get()
+            ->map(function($t) {
+                return [
+                    'ticket_number' => $t->ticket_number,
+                    'agent' => $t->assignedAgent->name ?? 'Sin asignar',
+                    'rejected_count' => $t->validation_rejected_count,
+                    'status' => $t->status->name,
+                ];
+            });
+
+        return response()->json($tickets);
+    }
+
+    public function ticketsNearSlaDeadline(Request $request)
+    {
+        $query = $this->applyUserFilters(Ticket::query(), $request->user());
+
+        $tickets = $query->whereHas('status', function($q) {
+                $q->whereNotIn('name', ['resuelto', 'cerrado']);
+            })
+            ->whereNotNull('sla_resolution_due_at')
+            ->with('status', 'assignedAgent')
+            ->orderBy('sla_resolution_due_at')
+            ->limit(15)
+            ->get()
+            ->map(function($t) {
+                return [
+                    'ticket_number' => $t->ticket_number,
+                    'status' => $t->status->name,
+                    'priority' => $t->priority,
+                    'agent' => $t->assignedAgent->name ?? 'Sin asignar',
+                    'sla_status' => $t->sla_status,
+                    'sla_due_date' => $t->sla_resolution_due_at->format('d/m/Y H:i'),
+                ];
+            });
+
+        return response()->json($tickets);
+    }
+
+    public function myPendingValidationTickets(Request $request)
+    {
+        $query = $this->applyUserFilters(Ticket::query(), $request->user());
+
+        $tickets = $query->whereHas('status', function($q) {
+                $q->where('name', 'pendiente_validacion');
+            })
+            ->with('status', 'assignedAgent')
+            ->orderBy('validation_requested_at')
+            ->get()
+            ->map(function($t) {
+                return [
+                    'ticket_number' => $t->ticket_number,
+                    'agent' => $t->assignedAgent->name ?? 'Sin asignar',
+                    'validation_requested_at' => $t->validation_requested_at?->format('d/m/Y H:i'),
+                    'validation_deadline' => $t->validation_deadline?->format('d/m/Y H:i'),
+                ];
+            });
+
+        return response()->json($tickets);
+    }
+
     // ==========================================
     // TABLAS
     // ==========================================

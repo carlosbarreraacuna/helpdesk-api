@@ -40,6 +40,29 @@ class TicketController extends Controller
         return response()->json($statuses);
     }
 
+    /**
+     * Resumen de tickets del usuario autenticado (portal funcionarios)
+     */
+    public function myTicketsStats(Request $request)
+    {
+        $user = $request->user();
+
+        $participantTicketIds = TicketParticipant::where('user_id', $user->id)->pluck('ticket_id');
+        $query = Ticket::where(function ($q) use ($user, $participantTicketIds) {
+            $q->where('requester_email', $user->email)
+              ->orWhereIn('id', $participantTicketIds);
+        });
+
+        $tickets = $query->with('status:id,name')->get();
+
+        return response()->json([
+            'total' => $tickets->count(),
+            'abiertos' => $tickets->filter(fn($t) => !in_array($t->status->name, ['cerrado', 'resuelto']))->count(),
+            'resueltos' => $tickets->filter(fn($t) => in_array($t->status->name, ['cerrado', 'resuelto']))->count(),
+            'pendiente_validacion' => $tickets->filter(fn($t) => $t->status->name === 'pendiente_validacion')->count(),
+        ]);
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();

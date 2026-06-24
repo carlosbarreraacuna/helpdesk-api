@@ -123,6 +123,7 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
 
     // Ticket routes
     Route::get('/tickets', [TicketController::class, 'index']); // List according to role
+    Route::get('/portal/my-tickets-stats', [TicketController::class, 'myTicketsStats']);
     Route::get('/tickets/{id}', [TicketController::class, 'show']);
     Route::get('/tickets/{id}/peek', [TicketController::class, 'peek']);
     Route::get('/ticket-statuses', [TicketController::class, 'getStatuses']); // Get all statuses
@@ -248,17 +249,25 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     Route::get('/reports/metrics/pending-tickets', [ReportController::class, 'pendingTickets']);
     Route::get('/reports/metrics/resolved-tickets', [ReportController::class, 'resolvedTickets']);
     Route::get('/reports/metrics/avg-resolution-time', [ReportController::class, 'avgResolutionTime']);
-    
+    Route::get('/reports/metrics/validation-rejection-rate', [ReportController::class, 'validationRejectionRate']);
+
     // GRÁFICOS
     Route::get('/reports/charts/tickets-by-status', [ReportController::class, 'ticketsByStatus']);
     Route::get('/reports/charts/tickets-by-priority', [ReportController::class, 'ticketsByPriority']);
     Route::get('/reports/charts/tickets-trend', [ReportController::class, 'ticketsTrend']);
     Route::get('/reports/charts/tickets-by-area', [ReportController::class, 'ticketsByArea']);
-    
+    Route::get('/reports/charts/tickets-by-channel', [ReportController::class, 'ticketsByChannel']);
+    Route::get('/reports/charts/tickets-by-category', [ReportController::class, 'ticketsByCategory']);
+    Route::get('/reports/charts/backlog-aging', [ReportController::class, 'backlogAging']);
+
     // TABLAS
     Route::get('/reports/tables/tickets-by-agent', [ReportController::class, 'ticketsByAgent']);
     Route::get('/reports/tables/sla-compliance', [ReportController::class, 'slaCompliance']);
-    
+    Route::get('/reports/tables/unassigned-stalled', [ReportController::class, 'unassignedOrStalledTickets']);
+    Route::get('/reports/tables/validations-rejected-team', [ReportController::class, 'validationsRejectedByTeam']);
+    Route::get('/reports/tables/tickets-near-sla-deadline', [ReportController::class, 'ticketsNearSlaDeadline']);
+    Route::get('/reports/tables/my-pending-validation', [ReportController::class, 'myPendingValidationTickets']);
+
     // EXPORTACIÓN
     Route::post('/reports/export/all-tickets', [ReportController::class, 'exportTickets'])
         ->middleware('permission:reports.export');
