@@ -19,10 +19,17 @@ class EmailChannel extends Model
     protected $hidden = ['imap_password', 'smtp_password', 'gmail_client_secret', 'gmail_refresh_token', 'gmail_access_token'];
 
     protected $casts = [
-        'is_active'      => 'boolean',
-        'use_gmail_api'  => 'boolean',
-        'last_polled_at' => 'datetime',
+        'is_active'        => 'boolean',
+        'use_gmail_api'    => 'boolean',
+        'last_polled_at'   => 'datetime',
         'gmail_history_id' => 'integer',
+
+        // Cifrado en reposo — AES-256-CBC via APP_KEY
+        'imap_password'        => 'encrypted',
+        'smtp_password'        => 'encrypted',
+        'gmail_client_secret'  => 'encrypted',
+        'gmail_refresh_token'  => 'encrypted',
+        'gmail_access_token'   => 'encrypted',
     ];
 
     public function messages(): HasMany
