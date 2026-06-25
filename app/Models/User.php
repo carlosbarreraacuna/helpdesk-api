@@ -19,18 +19,11 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $fillable = [
-        'name',
-        'username',
-        'email',
-        'password',
-        'role_id',
-        'area_id',
-        'phone',
-        'whatsapp_phone',
-        'cedula',
-        'avatar',
-        'is_active',
-        'last_login',
+        'name', 'username', 'email', 'password',
+        'role_id', 'area_id', 'phone', 'whatsapp_phone',
+        'cedula', 'avatar', 'is_active', 'last_login',
+        'two_factor_secret', 'two_factor_enabled', 'two_factor_confirmed_at',
+        'password_changed_at', 'password_expires_at',
     ];
 
     /**
@@ -51,9 +44,14 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
-            'last_login' => 'datetime',
-            'is_active' => 'boolean',
+            'email_verified_at'       => 'datetime',
+            'last_login'              => 'datetime',
+            'is_active'               => 'boolean',
+            'two_factor_enabled'      => 'boolean',
+            'two_factor_confirmed_at' => 'datetime',
+            'password_changed_at'     => 'datetime',
+            'password_expires_at'     => 'datetime',
+            'two_factor_secret'       => 'encrypted',
         ];
     }
 
@@ -85,6 +83,11 @@ class User extends Authenticatable
     public function ticketHistory()
     {
         return $this->hasMany(TicketHistory::class);
+    }
+
+    public function passwordHistories()
+    {
+        return $this->hasMany(\App\Models\PasswordHistory::class)->latest();
     }
 
     /**

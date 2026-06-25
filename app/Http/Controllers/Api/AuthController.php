@@ -8,8 +8,10 @@ use App\Models\RefreshToken;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 /**
  * @tags Autenticación
@@ -34,12 +36,35 @@ class AuthController extends Controller
             return response()->json(['message' => 'Credenciales inválidas'], 401);
         }
 
-        Auth::login($user);
-
         if (!$user->is_active) {
             AuthLog::record(event: 'login_inactive', userId: $user->id, loginInput: $credentials['login']);
             return response()->json(['message' => 'Usuario inactivo'], 403);
         }
+
+        // ── 2FA checks ─────────────────────────────────────────────────────
+        $adminRoles = ['admin', 'supervisor'];
+        $isAdmin    = in_array($user->role?->name, $adminRoles);
+
+        if ($user->two_factor_enabled) {
+            // Require TOTP verification
+            $challengeToken = Str::uuid()->toString();
+            Cache::put("2fa_challenge:{$challengeToken}", $user->id, now()->addMinutes(5));
+            return response()->json([
+                'requires_2fa'    => true,
+                'challenge_token' => $challengeToken,
+            ]);
+        }
+
+        if ($isAdmin) {
+            // Admin/supervisor without 2FA → force setup (MSPI requirement)
+            $setupToken = Str::uuid()->toString();
+            Cache::put("2fa_setup:{$setupToken}", $user->id, now()->addMinutes(15));
+            return response()->json([
+                'requires_2fa_setup' => true,
+                'setup_token'        => $setupToken,
+            ]);
+        }
+        // ────────────────────────────────────────────────────────────────────
 
         $user->update(['last_login' => now()]);
 
@@ -130,6 +155,32 @@ class AuthController extends Controller
         $expiredCookie = Cookie::forget(self::REFRESH_COOKIE);
 
         return response()->json(['message' => 'Sesión cerrada'])->withCookie($expiredCookie);
+    }
+
+    public function changePassword(Request $request)
+    {
+        $request->validate([
+            'current_password' => 'required|string',
+            'new_password'     => 'required|string|confirmed',
+        ]);
+
+        $user = $request->user();
+
+        if (!Hash::check($request->current_password, $user->password)) {
+            return response()->json(['message' => 'La contraseña actual es incorrecta'], 422);
+        }
+
+        $policy = app(\App\Services\PasswordPolicyService::class);
+        $errors = $policy->validate($user, $request->new_password);
+        if (!empty($errors)) {
+            return response()->json(['message' => implode('. ', $errors)], 422);
+        }
+
+        $hashed = Hash::make($request->new_password);
+        $user->update(['password' => $hashed]);
+        $policy->recordChange($user, $hashed);
+
+        return response()->json(['message' => 'Contraseña actualizada correctamente']);
     }
 
     public function me(Request $request)

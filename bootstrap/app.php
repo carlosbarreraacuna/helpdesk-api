@@ -42,9 +42,13 @@ return Application::configure(basePath: dirname(__DIR__))
         |--------------------------------------------------------------------------
         */
 
+        // Security headers en todas las respuestas
+        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
+
         $middleware->alias([
-            'verified'   => \App\Http\Middleware\EnsureEmailIsVerified::class,
-            'permission' => \App\Http\Middleware\CheckPermission::class,
+            'verified'          => \App\Http\Middleware\EnsureEmailIsVerified::class,
+            'permission'        => \App\Http\Middleware\CheckPermission::class,
+            'password.expired'  => \App\Http\Middleware\CheckPasswordExpired::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

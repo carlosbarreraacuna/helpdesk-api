@@ -90,6 +90,13 @@ Route::post('/auth/login', [AuthController::class, 'login'])
 Route::post('/auth/refresh', [AuthController::class, 'refresh'])
     ->middleware('throttle:10,1');
 
+// 2FA public endpoints (no auth token yet — identified by challenge/setup token)
+Route::middleware('throttle:10,1')->group(function () {
+    Route::post('/auth/two-factor/verify',        [\App\Http\Controllers\Api\TwoFactorController::class, 'verify']);
+    Route::post('/auth/two-factor/force-setup',   [\App\Http\Controllers\Api\TwoFactorController::class, 'forceSetup']);
+    Route::post('/auth/two-factor/force-confirm', [\App\Http\Controllers\Api\TwoFactorController::class, 'forceConfirm']);
+});
+
 // Protected routes — 60 requests per minute per authenticated user
 Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     Route::get('/user', function (Request $request) {
@@ -99,8 +106,21 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     // Broadcasting auth para canales privados (Reverb/Pusher protocol)
     Route::post('/broadcasting/auth', \App\Http\Controllers\Api\BroadcastingAuthController::class);
 
+    // ── Rutas exentas de la verificación de contraseña expirada ────────────
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
+    Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
+
+    // 2FA management (authenticated user managing their own 2FA)
+    Route::prefix('auth/two-factor')->group(function () {
+        Route::get('/',         [\App\Http\Controllers\Api\TwoFactorController::class, 'status']);
+        Route::post('/setup',   [\App\Http\Controllers\Api\TwoFactorController::class, 'setup']);
+        Route::post('/confirm', [\App\Http\Controllers\Api\TwoFactorController::class, 'confirm']);
+        Route::post('/disable', [\App\Http\Controllers\Api\TwoFactorController::class, 'disable']);
+    });
+
+    // ── Resto de rutas protegidas — bloquea si la contraseña está expirada ────
+    Route::middleware('password.expired')->group(function () {
 
     // ─── IA ────────────────────────────────────────────────────────────────────
     Route::prefix('ai')->group(function () {
@@ -527,6 +547,8 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::post('/users/{userId}/profile/software', [UserTechProfileController::class, 'storeSoftware']);
         Route::delete('/users/{userId}/profile/software/{software}', [UserTechProfileController::class, 'destroySoftware']);
     });
+
+    }); // end password.expired group
 });
 
 // Google OAuth2 callback — público (no lleva token de Sanctum)
