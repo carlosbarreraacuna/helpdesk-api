@@ -123,6 +123,11 @@ class Ticket extends Model
         return $this->hasMany(TicketHistory::class);
     }
 
+    public function attachments()
+    {
+        return $this->hasMany(TicketAttachment::class);
+    }
+
     public function publicComments()
     {
         return $this->hasMany(TicketComment::class)->where('is_internal', false);

@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cookie;
+use Illuminate\Support\Facades\Hash;
 
 /**
  * @tags Autenticación
@@ -24,15 +25,16 @@ class AuthController extends Controller
             'password' => 'required',
         ]);
 
-        $loginField      = filter_var($credentials['login'], FILTER_VALIDATE_EMAIL) ? 'email' : 'username';
-        $authCredentials = [$loginField => $credentials['login'], 'password' => $credentials['password']];
+        $loginField = filter_var($credentials['login'], FILTER_VALIDATE_EMAIL) ? 'email' : 'username';
 
-        if (!Auth::attempt($authCredentials)) {
+        $user = User::whereRaw('LOWER(' . $loginField . ') = ?', [strtolower($credentials['login'])])->first();
+
+        if (!$user || !Hash::check($credentials['password'], $user->password)) {
             AuthLog::record(event: 'login_failed', loginInput: $credentials['login']);
             return response()->json(['message' => 'Credenciales inválidas'], 401);
         }
 
-        $user = Auth::user();
+        Auth::login($user);
 
         if (!$user->is_active) {
             AuthLog::record(event: 'login_inactive', userId: $user->id, loginInput: $credentials['login']);

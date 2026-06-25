@@ -160,7 +160,8 @@ class TicketController extends Controller
             'description'         => 'required|string',
             'priority'            => 'required|in:baja,media,alta',
             'category_id'         => 'nullable|exists:ticket_categories,id',
-            'attachment'          => 'nullable|file|mimes:jpg,png,jpeg,gif|max:5120',
+            'attachments'         => 'nullable|array|max:20',
+            'attachments.*'       => 'file',
             'bot_context'         => 'nullable|string',
             'bot_kb_article_id'   => 'nullable|integer',
             'bot_kb_article_title'=> 'nullable|string',
@@ -173,10 +174,18 @@ class TicketController extends Controller
         // Generate verification code
         $verificationCode = rand(100000, 999999);
 
-        // Upload file if exists
+        // Validate total size ≤ 40 MB
+        $uploadedFiles = $request->file('attachments') ?? [];
+        $totalBytes    = array_sum(array_map(fn($f) => $f->getSize(), $uploadedFiles));
+        if ($totalBytes > 40 * 1024 * 1024) {
+            return response()->json(['message' => 'El total de archivos adjuntos no puede superar 40 MB'], 422);
+        }
+
+        // Upload files if present (first kept in attachment_path for backwards compat)
         $attachmentPath = null;
-        if ($request->hasFile('attachment')) {
-            $attachmentPath = $request->file('attachment')->store('attachments', 's3');
+        if (!empty($uploadedFiles)) {
+            $first = array_shift($uploadedFiles);
+            $attachmentPath = $first->store('attachments', 's3');
         }
 
         // Get "new" status
@@ -194,6 +203,31 @@ class TicketController extends Controller
             'category_id'      => $validated['category_id'] ?? null,
             'status_id'        => $newStatus->id,
         ]);
+
+        // Store the first file's info in ticket_attachments as well (if uploaded)
+        if ($attachmentPath) {
+            $firstFile = $request->file('attachments')[0] ?? null;
+            \App\Models\TicketAttachment::create([
+                'ticket_id' => $ticket->id,
+                'path'      => $attachmentPath,
+                'name'      => $firstFile ? $firstFile->getClientOriginalName() : basename($attachmentPath),
+                'mime'      => $firstFile ? $firstFile->getMimeType() : null,
+                'size'      => $firstFile ? $firstFile->getSize() : null,
+            ]);
+        }
+
+        // Store remaining files
+        foreach ($uploadedFiles as $file) {
+            if (!$file || !$file->isValid()) continue;
+            $path = $file->store('attachments', 's3');
+            \App\Models\TicketAttachment::create([
+                'ticket_id' => $ticket->id,
+                'path'      => $path,
+                'name'      => $file->getClientOriginalName(),
+                'mime'      => $file->getMimeType(),
+                'size'      => $file->getSize(),
+            ]);
+        }
 
         // Calculate and assign SLA due dates
         app(SlaService::class)->calculateAndAssign($ticket);
