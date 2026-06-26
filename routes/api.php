@@ -500,8 +500,9 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
 
     // ── Configuración de seguridad global ────────────────────────────────────
     Route::prefix('admin/settings/security')->middleware('permission:settings.update')->group(function () {
-        Route::get('/',  [SecuritySettingController::class, 'show']);
-        Route::patch('/', [SecuritySettingController::class, 'update']);
+        Route::get('/',                                    [SecuritySettingController::class, 'show']);
+        Route::patch('/',                                  [SecuritySettingController::class, 'update']);
+        Route::delete('/users/{userId}/two-factor',        [SecuritySettingController::class, 'disableUserTwoFactor']);
     });
 
     // ── Canal de Email ────────────────────────────────────────────────────────
