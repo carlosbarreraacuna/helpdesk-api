@@ -34,6 +34,7 @@ use App\Http\Controllers\Api\WorkGroupController;
 use App\Http\Controllers\Api\AiController;
 use App\Http\Controllers\Api\SlaController;
 use App\Http\Controllers\Api\BackupController;
+use App\Http\Controllers\Api\SecuritySettingController;
 
 /*
 |--------------------------------------------------------------------------
@@ -495,6 +496,12 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         // Panel agente
         Route::get('/active-sessions', [ChatController::class, 'activeSessions']);
         Route::get('/unread-count', [ChatController::class, 'unreadCount']);
+    });
+
+    // ── Configuración de seguridad global ────────────────────────────────────
+    Route::prefix('admin/settings/security')->middleware('permission:settings.update')->group(function () {
+        Route::get('/',  [SecuritySettingController::class, 'show']);
+        Route::patch('/', [SecuritySettingController::class, 'update']);
     });
 
     // ── Canal de Email ────────────────────────────────────────────────────────

@@ -20,6 +20,11 @@ class HelpdeskSettingsSeeder extends Seeder
                 'value'       => '3',
                 'description' => 'Número máximo de rechazos de validación antes de escalar el ticket automáticamente.',
             ],
+            [
+                'key'         => 'two_factor_required',
+                'value'       => '0',
+                'description' => 'Exigir 2FA a administradores y supervisores al iniciar sesión.',
+            ],
         ];
 
         foreach ($defaults as $setting) {

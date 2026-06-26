@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\AuthLog;
+use App\Models\HelpdeskSetting;
 use App\Models\RefreshToken;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -42,8 +43,9 @@ class AuthController extends Controller
         }
 
         // ── 2FA checks ─────────────────────────────────────────────────────
-        $adminRoles = ['admin', 'supervisor'];
-        $isAdmin    = in_array($user->role?->name, $adminRoles);
+        $adminRoles       = ['admin', 'supervisor'];
+        $isAdmin          = in_array($user->role?->name, $adminRoles);
+        $twoFactorRequired = (bool) HelpdeskSetting::get('two_factor_required', '0');
 
         if ($user->two_factor_enabled) {
             // Require TOTP verification
@@ -55,8 +57,8 @@ class AuthController extends Controller
             ]);
         }
 
-        if ($isAdmin) {
-            // Admin/supervisor without 2FA → force setup (MSPI requirement)
+        if ($isAdmin && $twoFactorRequired) {
+            // Admin/supervisor without 2FA → force setup (only when globally required)
             $setupToken = Str::uuid()->toString();
             Cache::put("2fa_setup:{$setupToken}", $user->id, now()->addMinutes(15));
             return response()->json([
