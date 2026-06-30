@@ -34,7 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Railway termina TLS y hace proxy a este contenedor — confiamos en el proxy
         // para leer la IP real del cliente desde X-Forwarded-For (si no, $request->ip()
         // devuelve la IP interna del proxy de Railway en vez de la del usuario).
-        $middleware->trustProxies(at: '*', headers: Request::HEADER_X_FORWARDED_FOR | Request::HEADER_X_FORWARDED_HOST | Request::HEADER_X_FORWARDED_PORT | Request::HEADER_X_FORWARDED_PROTO);
+        $middleware->trustProxies(at: '**', headers: Request::HEADER_X_FORWARDED_FOR | Request::HEADER_X_FORWARDED_HOST | Request::HEADER_X_FORWARDED_PORT | Request::HEADER_X_FORWARDED_PROTO);
 
         /*
         |--------------------------------------------------------------------------
