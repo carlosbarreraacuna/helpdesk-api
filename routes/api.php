@@ -579,13 +579,3 @@ Route::get('/gmail/oauth/{channelId}', [\App\Http\Controllers\Api\GmailWebhookCo
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/whatsapp/send', [WhatsAppWebhookController::class, 'sendManualMessage']);
 });
-
-// Temporal — diagnóstico de IP (eliminar tras confirmar)
-Route::get('/debug-ip', function (Request $request) {
-    return response()->json([
-        'request_ip'      => $request->ip(),
-        'x_forwarded_for' => $request->header('X-Forwarded-For'),
-        'x_real_ip'       => $request->header('X-Real-Ip'),
-        'remote_addr'     => $_SERVER['REMOTE_ADDR'] ?? null,
-    ]);
-});
